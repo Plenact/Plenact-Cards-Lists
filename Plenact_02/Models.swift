@@ -5,6 +5,26 @@ struct KanbanCard: Identifiable, Hashable {
     let word: String
     let listTitle: String
 
+    var subtitle: String {
+        ["A small idea with suspiciously large ambitions", "Make progress before the coffee gets cold", "A practical plan, lightly seasoned with chaos", "One more useful thing for today's board", "Future success, pending a snack break"][id % 5]
+    }
+
+    var checklistItems: [String] {
+        ["Gather the important bits", "Make it look intentional", "Celebrate the surprisingly good result"]
+    }
+
+    var completedChecklistItems: Int {
+        id % 4
+    }
+
+    var commentCount: Int {
+        id % 4
+    }
+
+    var hasDueDate: Bool {
+        id % 3 != 1
+    }
+
     var funParagraph: String {
         let templates: [(String, String) -> String] = [
             { word, title in
@@ -47,6 +67,10 @@ struct KanbanList: Identifiable {
     let id: Int
     let title: String
     let cards: [KanbanCard]
+
+    var subtitle: String {
+        ["Ideas taking shape", "Ready for a little momentum", "Currently in progress", "Nearly across the finish line", "Done, or at least confidently presented"][id]
+    }
 }
 
 enum SampleData {
