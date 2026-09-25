@@ -1,10 +1,39 @@
+// --------------------------------------------------------------------------------------------------
+// @file       CardDetailView.swift
+// @brief      Detailed kanban card presentation and supporting components
+// @details    Defines the card detail screen, sections, actions, metadata rows, and activity feed
+//
+// @notes      Supporting views are intentionally small and reusable within the detail screen
+//
+// --------------------------------------------------------------------------------------------------
 import SwiftUI
 
+
+// -------------------------------------- MARK: - Card Detail View ------------------------------ //
+
+///
+/// Presents the complete detail view for a selected kanban card
+///
+/// @section    Purpose
+///     Render the selected card's title, context, metadata, checklists, activity, and navigation action
+///
+/// @note   The detail surface is intentionally scrollable so every card section remains accessible on iPhone
+///
 struct CardDetailView: View {
-    let card: KanbanCard
+
+    let card: KanbanCard   /* The kanban card being displayed in detail */
+
+
     @Environment(\.dismiss) private var dismiss
 
+    ///
+    /// @brief      Build the card detail presentation
+    /// @details    Composes the Trello-inspired sections and keeps the Back action in the bottom safe area
+    ///
+    /// @return     (some View) rendered card detail screen
+    ///
     var body: some View {
+
         ZStack {
             Color(.systemGroupedBackground)
                 .ignoresSafeArea()
@@ -93,18 +122,50 @@ struct CardDetailView: View {
     }
 }
 
+
+// -------------------------------------- MARK: - Detail Section ------------------------------- //
+
+///
+/// Groups a detail subsection with an optional trailing symbol
+///
+/// @section    Purpose
+///     Provide a consistent heading, content area, spacing, and divider for card detail sections
+///
+/// @note   The generic content keeps this component reusable for text, controls, metadata, and activity
+///
 struct DetailSection<Content: View>: View {
-    let title: String
-    var trailing: String?
+
+    let title:    String    /* The title of the detail section                    */
+    var trailing: String?   /* The optional trailing symbol of the detail section */
+
     @ViewBuilder let content: () -> Content
 
+    ///
+    /// @brief      Initialize a detail section
+    /// @details    Stores the section title, optional trailing symbol, and view-builder content
+    ///
+    /// @param[in]  title       Display title for the section
+    /// @param[in]  trailing    Optional SF Symbol name shown at the trailing edge
+    /// @param[in]  content     Content rendered below the section heading
+    ///
+    /// @return     (DetailSection) configured detail section
+    ///
     init(title: String, trailing: String? = nil, @ViewBuilder content: @escaping () -> Content) {
-        self.title = title
-        self.trailing = trailing
-        self.content = content
+
+        self.title    = title      /* The title of the detail section                    */
+        self.trailing = trailing   /* The optional trailing symbol of the detail section */
+        self.content  = content    /* The content of the detail section                  */
     }
 
+
+    ///
+    /// @brief      Build the detail section presentation
+    /// @details    Renders the heading, optional trailing symbol, supplied content, and section divider
+    ///
+    /// @return     (some View) rendered detail section
+    ///
     var body: some View {
+
         VStack(alignment: .leading, spacing: 10) {
             HStack {
                 Text(title)
@@ -123,12 +184,29 @@ struct DetailSection<Content: View>: View {
     }
 }
 
-struct ActionTile: View {
-    let title: String
-    let icon: String
-    let color: Color
 
+// -------------------------------------- MARK: - Action Tile ---------------------------------- //
+
+///
+/// Displays a compact action button within a detail section
+///
+/// @section    Purpose
+///     Present a labeled action with a symbol and accent color in the quick-actions grid
+///
+struct ActionTile: View {
+
+    let title: String   /* The title of the action tile          */
+    let icon:  String   /* The icon representing the action tile */
+    let color: Color    /* The color of the action tile          */
+
+    ///
+    /// @brief      Build the compact action tile
+    /// @details    Renders the action label and symbol as a plain, consistently sized button
+    ///
+    /// @return     (some View) rendered action tile
+    ///
     var body: some View {
+
         Button(action: {}) {
             Label(title, systemImage: icon)
                 .font(.caption)
@@ -143,12 +221,29 @@ struct ActionTile: View {
     }
 }
 
-struct DetailRow: View {
-    let icon: String
-    let title: String
-    let value: String
 
+// -------------------------------------- MARK: - Detail Row ----------------------------------- //
+
+///
+/// Displays one icon, label, and value row in the card metadata
+///
+/// @section    Purpose
+///     Keep related card metadata visually aligned and easy to scan
+///
+struct DetailRow: View {
+
+    let icon:  String   /* The icon representing the detail row     */
+    let title: String   /* The title or label of the detail row     */
+    let value: String   /* The value associated with the detail row */
+
+    ///
+    /// @brief      Build one metadata row
+    /// @details    Aligns the supplied icon, title, and trailing value within the detail section
+    ///
+    /// @return     (some View) rendered metadata row
+    ///
     var body: some View {
+
         HStack(spacing: 12) {
             Image(systemName: icon)
                 .frame(width: 22)
@@ -163,12 +258,32 @@ struct DetailRow: View {
     }
 }
 
-struct ChecklistBlock: View {
-    let title: String
-    let items: [String]
-    let completed: Int
 
+// -------------------------------------- MARK: - Checklist ------------------------------------ //
+
+///
+/// Displays a checklist group and its completion count
+///
+/// @section    Purpose
+///     Present checklist progress together with each item and its completion state
+///
+/// @note   Completion is supplied by the parent so this view remains presentation-focused
+///
+struct ChecklistBlock: View {
+
+    let title:     String   /* The title of the checklist block */
+    let items:     [String] /* The list of checklist items      */
+    let completed: Int      /* The number of completed items    */
+
+
+    ///
+    /// @brief      Build the checklist group
+    /// @details    Renders the group title, completed-item count, and checklist rows
+    ///
+    /// @return     (some View) rendered checklist group
+    ///
     var body: some View {
+
         VStack(alignment: .leading, spacing: 0) {
             HStack {
                 Text(title)
@@ -195,10 +310,28 @@ struct ChecklistBlock: View {
     }
 }
 
-struct ActivityRow: View {
-    let text: String
 
+// -------------------------------------- MARK: - Activity ------------------------------------- //
+
+///
+/// Displays one activity event associated with the card
+///
+/// @section    Purpose
+///     Render a compact activity entry with actor styling, event text, and timestamp
+///
+struct ActivityRow: View {
+
+    let text: String    /* The main text content of the activity row */
+
+
+    ///
+    /// @brief      Build the activity event row
+    /// @details    Places the activity text and timestamp beside the actor symbol
+    ///
+    /// @return     (some View) rendered activity row
+    ///
     var body: some View {
+
         HStack(alignment: .top, spacing: 10) {
             Image(systemName: "person.crop.circle.fill")
                 .foregroundStyle(.teal)
@@ -214,8 +347,18 @@ struct ActivityRow: View {
     }
 }
 
+
+// -------------------------------------- MARK: - Previews -------------------------------------- //
+
+///
+/// Preview the card detail presentation with representative sample data
+///
+/// @section    Purpose
+///     Provide a fast Xcode canvas preview for the complete detail flow
+///
 #Preview {
     NavigationStack {
         CardDetailView(card: SampleData.lists[0].cards[0])
     }
 }
+

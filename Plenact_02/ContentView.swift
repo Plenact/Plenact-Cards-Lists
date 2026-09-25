@@ -1,6 +1,25 @@
+// --------------------------------------------------------------------------------------------------
+// @file       ContentView.swift
+// @brief      Kanban board screen and reusable board views
+// @details    Defines the board container, lists, cards, and navigation into card details
+//
+// @notes      Views remain composable and keep presentation logic close to the rendered component
+//
+// --------------------------------------------------------------------------------------------------
 import SwiftUI
 
+
+// -------------------------------------- MARK: - Board View ------------------------------------ //
+
+///
+/// Displays the horizontally scrollable Plenact kanban board
+///
+/// @section    Purpose
+///     Install the board background, header, paged list surface, and navigation path into card details
+///
 struct ContentView: View {
+
+    /// Builds the board scene and its horizontally scrollable list collection.
     var body: some View {
         NavigationStack {
             GeometryReader { screen in
@@ -34,13 +53,26 @@ struct ContentView: View {
     }
 }
 
+
+// -------------------------------------- MARK: - Board Header ---------------------------------- //
+
+///
+/// Displays the board title and board-level actions
+///
+/// @section    Purpose
+///     Establish the visual identity of the board and expose board-level controls
+///
 struct BoardHeader: View {
+
+    /// Builds the title block and board action controls.
     var body: some View {
         HStack {
             VStack(alignment: .leading, spacing: 2) {
+
                 Text("Plenact")
                     .font(.largeTitle.weight(.bold))
                     .foregroundStyle(.white)
+
                 Text("Work Week Board")
                     .font(.subheadline)
                     .foregroundStyle(.white.opacity(0.75))
@@ -49,6 +81,7 @@ struct BoardHeader: View {
             Spacer()
 
             Button(action: {}) {
+
                 Image(systemName: "plus.circle.fill")
                     .font(.title2)
                     .foregroundStyle(.white)
@@ -56,6 +89,7 @@ struct BoardHeader: View {
             .accessibilityLabel("Add list")
 
             Button(action: {}) {
+
                 Image(systemName: "ellipsis.circle.fill")
                     .font(.title2)
                     .foregroundStyle(.white)
@@ -68,15 +102,28 @@ struct BoardHeader: View {
     }
 }
 
+
+// -------------------------------------- MARK: - Kanban List ----------------------------------- //
+
+///
+/// Displays one kanban list and its cards
+///
+/// @section    Purpose
+///     Keep a list title, list metadata, add-card action, and vertically scrollable card collection together
+///
 struct KanbanListView: View {
+
     let list: KanbanList
     let screenSize: CGSize
 
+    /// Maintains the original quarter-screen card sizing requirement.
     private var cardHeight: CGFloat {
         screenSize.height * 0.25
     }
 
+    /// Builds one list panel and its card navigation destinations.
     var body: some View {
+
         VStack(spacing: 0) {
             HStack(alignment: .top) {
                 VStack(alignment: .leading, spacing: 3) {
@@ -129,11 +176,24 @@ struct KanbanListView: View {
     }
 }
 
+
+// -------------------------------------- MARK: - Kanban Card ----------------------------------- //
+
+///
+/// Displays a compact summary of a kanban card
+///
+/// @section    Purpose
+///     Present the title, supporting copy, and compact metadata used to scan cards on the board
+///
 struct KanbanCardView: View {
+
     let card: KanbanCard
     let height: CGFloat
 
+
+    /// Builds a fixed-height card summary within its parent list.
     var body: some View {
+
         VStack(alignment: .leading, spacing: 9) {
             Text(card.word.capitalized)
                 .font(.headline)
@@ -165,6 +225,9 @@ struct KanbanCardView: View {
     }
 }
 
+// -------------------------------------- MARK: - Previews -------------------------------------- //
+
+/// Preview the complete board presentation with deterministic sample data.
 #Preview {
     ContentView()
 }
