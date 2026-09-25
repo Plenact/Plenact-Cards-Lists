@@ -24,7 +24,76 @@ struct CardDetailView: View {
     let card: KanbanCard   /* The kanban card being displayed in detail */
 
 
-    @Environment(\.dismiss) private var dismiss
+    @Environment(\.dismiss) private var dismiss             /* Dismiss action for the card detail view                */
+    @State private var checklists: [KanbanChecklist]        /* The checklist groups associated with the selected card */
+
+    ///
+    /// @brief      Initialize the card detail state
+    /// @details    Seeds the card with the Focus, Plan, and Routine checklist groups shown in the detail view
+    ///
+    /// @param[in]  card        The kanban card being displayed in detail
+    ///
+    /// @return     (CardDetailView) configured card detail presentation
+    ///
+    init(card: KanbanCard) {
+        self.card = card
+        _checklists = State(initialValue: [
+            KanbanChecklist(title: "Focus",   items: card.checklistItems,            completed: card.completedChecklistItems),
+            KanbanChecklist(title: "Plan",    items: ["Choose the next useful step", "Stop building", "Start producing"], completed: 1),
+            KanbanChecklist(title: "Routine", items: ["Home",                        "Gym",           "Work"])
+        ])
+    }
+
+
+    ///
+    /// @brief      Append a new empty checklist to the selected card's detail state
+    /// @details    Adds a checklist with the common default title and no items
+    ///
+    /// @post       The new checklist appears in the Checklists section with zero items and zero completion
+    ///
+    private func addChecklist() {
+        checklists.append(KanbanChecklist(title: "Checklist"))
+    }
+
+
+    ///
+    /// @brief      Remove a checklist from the selected card's detail state
+    /// @details    Filters the checklist collection by its stable identifier
+    ///
+    /// @param[in]  checklistID  Identifier of the checklist to remove
+    ///
+    /// @post       The selected checklist is no longer rendered in the Checklists section
+    ///
+    private func deleteChecklist(with checklistID: UUID) {
+        checklists.removeAll { $0.id == checklistID }
+    }
+    
+    ///
+    /// @brief      Append a new item to a checklist
+    /// @details    Replaces the matching value-type checklist with a copy containing one additional item
+    ///
+    /// @param[in]  checklistID  Identifier of the checklist receiving the new item
+    ///
+    /// @post       The new item appears above the checklist's Add item... control
+    ///
+    private func addItem(to checklistID: UUID) {
+
+        // Find the index of the checklist to which the new item will be added
+        guard let checklistIndex = checklists.firstIndex(where: { $0.id == checklistID }) else {
+            return
+        }
+
+        let checklist = checklists[checklistIndex]
+        let itemNumber = checklist.items.count + 1
+
+        checklists[checklistIndex] = KanbanChecklist(
+            id:        checklist.id,
+            title:     checklist.title,
+            items:     checklist.items + ["Item \(itemNumber)"],
+            completed: checklist.completed
+        )
+    }
+
 
     ///
     /// @brief      Build the card detail presentation
@@ -60,14 +129,27 @@ struct CardDetailView: View {
                     }
                     .padding(16)
 
+                    //***********************************************************************************************//
+                    // SECTION: Quick Actions                                                                        //
+                    //                                                                                               //
+                    //          Presents the primary actions available for the selected card                         //
+                    //***********************************************************************************************//
                     DetailSection(title: "Quick Actions") {
+
                         LazyVGrid(columns: [GridItem(.flexible()), GridItem(.flexible())], spacing: 8) {
-                            ActionTile(title: "Add Checklist", icon: "checklist", color: .green)
-                            ActionTile(title: "Add Attachment", icon: "paperclip", color: .cyan)
-                            ActionTile(title: "Members", icon: "person.2", color: .purple)
+
+                            ActionTile(title: "Add Checklist",  icon: "checklist", color: .green,  action: addChecklist)
+                            ActionTile(title: "Add Attachment", icon: "paperclip", color: .cyan,   action: {})
+                            ActionTile(title: "Members",        icon: "person.2",  color: .purple, action: {})
                         }
                     }
 
+                    //***********************************************************************************************//
+                    // SECTION: Description                                                                          //
+                    //                                                                                               //
+                    //          Presents the humorous context associated with the selected card. The text expands    //
+                    //          vertically so the complete description remains readable                              //
+                    //***********************************************************************************************//
                     DetailSection(title: "Description") {
                         Text(card.funParagraph)
                             .font(.body)
@@ -75,6 +157,11 @@ struct CardDetailView: View {
                             .fixedSize(horizontal: false, vertical: true)
                     }
 
+                    //***********************************************************************************************//
+                    // SECTION: Details                                                                              //
+                    //                                                                                               //
+                    //          Presents the selected card's dates, labels, and member metadata in aligned rows      //
+                    //***********************************************************************************************//
                     DetailSection(title: "Details") {
                         DetailRow(icon: "calendar", title: "Start date", value: "Today")
                         Divider()
@@ -85,12 +172,36 @@ struct CardDetailView: View {
                         DetailRow(icon: "person", title: "Members", value: "Justin Reina")
                     }
 
-                    DetailSection(title: "Checklists", trailing: "plus") {
-                        ChecklistBlock(title: "Focus", items: card.checklistItems, completed: card.completedChecklistItems)
-                        ChecklistBlock(title: "Plan", items: ["Choose the next useful step", "Stop building", "Start producing"], completed: 1)
-                        ChecklistBlock(title: "Routine", items: ["Home", "Gym", "Work"], completed: 0)
+                    //***********************************************************************************************//
+                    // SECTION: Checklists                                                                           //
+                    //                                                                                               //
+                    //          Presents the card's checklist groups and their completion state. Checklist creation  //
+                    //          and deletion update the local collection rendered here                               //
+                    //***********************************************************************************************//
+                    DetailSection(title: "Checklists", trailing: "plus", trailingAction: addChecklist) {
+
+                        ForEach(checklists) { checklist in
+
+                            ChecklistBlock(
+
+                                checklist: checklist,
+
+                                onDelete: {
+                                    deleteChecklist(with: checklist.id)
+                                },
+                                
+                                onAddItem: {
+                                    addItem(to: checklist.id)
+                                }
+                            )
+                        }
                     }
 
+                    //***********************************************************************************************//
+                    // SECTION: Activity                                                                             //
+                    //                                                                                               //
+                    //          Presents the recent events associated with the selected card                         //
+                    //***********************************************************************************************//
                     DetailSection(title: "Activity", trailing: "gearshape") {
                         ActivityRow(text: "Justin Reina added \(card.word.capitalized) to this card")
                         ActivityRow(text: "Justin Reina created this card in \(card.listTitle)")
@@ -135,45 +246,69 @@ struct CardDetailView: View {
 ///
 struct DetailSection<Content: View>: View {
 
-    let title:    String    /* The title of the detail section                    */
-    var trailing: String?   /* The optional trailing symbol of the detail section */
+    let title:          String          /* The title of the detail section                    */
+    var trailing:       String?         /* The optional trailing symbol of the detail section */
+    var trailingAction: (() -> Void)?   /* The optional action for the trailing symbol       */
 
     @ViewBuilder let content: () -> Content
 
     ///
     /// @brief      Initialize a detail section
-    /// @details    Stores the section title, optional trailing symbol, and view-builder content
+    /// @details    Stores the section title, optional trailing symbol/action, and view-builder content
     ///
     /// @param[in]  title       Display title for the section
     /// @param[in]  trailing    Optional SF Symbol name shown at the trailing edge
+    /// @param[in]  trailingAction Optional action invoked by the trailing symbol
     /// @param[in]  content     Content rendered below the section heading
     ///
     /// @return     (DetailSection) configured detail section
     ///
-    init(title: String, trailing: String? = nil, @ViewBuilder content: @escaping () -> Content) {
+    init(title: String, trailing: String? = nil, trailingAction: (() -> Void)? = nil, @ViewBuilder content: @escaping () -> Content) {
 
-        self.title    = title      /* The title of the detail section                    */
-        self.trailing = trailing   /* The optional trailing symbol of the detail section */
-        self.content  = content    /* The content of the detail section                  */
+        self.title          = title          /* The title of the detail section                    */
+        self.trailing       = trailing       /* The optional trailing symbol of the detail section */
+        self.trailingAction = trailingAction /* The optional action for the trailing symbol       */
+        self.content        = content        /* The content of the detail section                  */
     }
 
 
     ///
     /// @brief      Build the detail section presentation
-    /// @details    Renders the heading, optional trailing symbol, supplied content, and section divider
+    /// @details    Renders the heading, optional trailing symbol/action, supplied content, and divider
     ///
     /// @return     (some View) rendered detail section
     ///
     var body: some View {
 
+        // Build the detail section container with heading, optional trailing symbol/action, content, and divider
         VStack(alignment: .leading, spacing: 10) {
+
+            // Build the heading row with title and optional trailing symbol/action
             HStack {
+
+                // Render the section title
                 Text(title)
                     .font(.headline)
                 Spacer()
+
+                // Render the trailing symbol and optional action if provided
                 if let trailing {
-                    Image(systemName: trailing)
-                        .foregroundStyle(.secondary)
+
+                    // Check if a trailing action is provided
+                    if let trailingAction {
+
+                        Button(action: trailingAction) {
+                            Image(systemName: trailing)
+                                .foregroundStyle(.secondary)
+                        }
+                        .buttonStyle(.plain)
+                        .accessibilityLabel("Add \(title.lowercased())")
+                    } else {
+
+                        // Render the trailing symbol without an action
+                        Image(systemName: trailing)
+                            .foregroundStyle(.secondary)
+                    }
                 }
             }
             content()
@@ -198,6 +333,7 @@ struct ActionTile: View {
     let title: String   /* The title of the action tile          */
     let icon:  String   /* The icon representing the action tile */
     let color: Color    /* The color of the action tile          */
+    let action: () -> Void
 
     ///
     /// @brief      Build the compact action tile
@@ -207,7 +343,7 @@ struct ActionTile: View {
     ///
     var body: some View {
 
-        Button(action: {}) {
+        Button(action: action) {
             Label(title, systemImage: icon)
                 .font(.caption)
                 .foregroundStyle(.primary)
@@ -271,9 +407,9 @@ struct DetailRow: View {
 ///
 struct ChecklistBlock: View {
 
-    let title:     String   /* The title of the checklist block */
-    let items:     [String] /* The list of checklist items      */
-    let completed: Int      /* The number of completed items    */
+    let checklist: KanbanChecklist   /* The checklist data rendered by the block           */
+    let onDelete: () -> Void         /* The action invoked when the checklist is deleted   */
+    let onAddItem: () -> Void        /* The action invoked when a new item is added        */
 
 
     ///
@@ -286,25 +422,40 @@ struct ChecklistBlock: View {
 
         VStack(alignment: .leading, spacing: 0) {
             HStack {
-                Text(title)
+                Text(checklist.title)
                     .font(.subheadline.weight(.semibold))
                 Spacer()
-                Text("\(completed)/\(items.count)")
+                Text("\(checklist.completed)/\(checklist.items.count)")
                     .font(.caption)
                     .foregroundStyle(.secondary)
+                Button(action: onDelete) {
+                    Image(systemName: "ellipsis")
+                        .foregroundStyle(.secondary)
+                }
+                .buttonStyle(.plain)
+                .accessibilityLabel("Delete checklist")
             }
             .padding(.bottom, 6)
 
-            ForEach(Array(items.enumerated()), id: \.offset) { index, item in
+            ForEach(Array(checklist.items.enumerated()), id: \.offset) { index, item in
                 HStack(spacing: 10) {
-                    Image(systemName: index < completed ? "checkmark.square.fill" : "square")
-                        .foregroundStyle(index < completed ? .blue : .secondary)
+                    Image(systemName: index < checklist.completed ? "checkmark.square.fill" : "square")
+                        .foregroundStyle(index < checklist.completed ? .blue : .secondary)
                     Text(item)
                         .font(.subheadline)
                     Spacer()
                 }
                 .padding(.vertical, 6)
             }
+
+            Button(action: onAddItem) {
+                Text("Add item...")
+                    .font(.subheadline)
+                    .foregroundStyle(.secondary)
+                    .frame(maxWidth: .infinity, alignment: .leading)
+                    .padding(.vertical, 6)
+            }
+            .buttonStyle(.plain)
         }
         .padding(.vertical, 6)
     }

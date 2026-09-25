@@ -225,6 +225,7 @@ struct KanbanCardView: View {
     }
 }
 
+
 // -------------------------------------- MARK: - Previews -------------------------------------- //
 
 /// Preview the complete board presentation with deterministic sample data.

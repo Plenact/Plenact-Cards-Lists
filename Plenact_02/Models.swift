@@ -114,6 +114,33 @@ struct KanbanList: Identifiable {
 }
 
 
+// -------------------------------------- MARK: - Checklist Model ------------------------------ //
+
+///
+/// Represents a checklist shown within a kanban card
+///
+/// @section    Purpose
+///     Provide a small value type for rendering both seeded and newly created checklist groups
+///
+struct KanbanChecklist: Identifiable {
+
+    let id:        UUID         /* Unique identifier for the checklist */
+    let title:     String       /* Title of the checklist              */
+    let items:     [String]    /* Items contained within the checklist */
+    let completed: Int         /* Number of completed items            */
+
+
+    /// Creates an empty checklist with no completed items.
+    init(id: UUID = UUID(), title: String, items: [String] = [], completed: Int = 0) {
+
+        self.id        = id             /* Unique identifier for the checklist  */
+        self.title     = title          /* Title of the checklist               */
+        self.items     = items          /* Items contained within the checklist */
+        self.completed = completed      /* Number of completed items            */
+    }
+}
+
+
 // -------------------------------------- MARK: - Sample Data ----------------------------------- //
 
 ///
