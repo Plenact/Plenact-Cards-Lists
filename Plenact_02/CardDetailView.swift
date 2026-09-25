@@ -96,6 +96,130 @@ struct CardDetailView: View {
 
 
     ///
+    /// @brief      Toggle one checklist item's completion state
+    /// @details    Replaces the matching value-type checklist with updated completed item indices
+    ///
+    /// @param[in]  checklistID  Identifier of the checklist being updated
+    /// @param[in]  itemIndex    Zero-based index of the item being toggled
+    ///
+    /// @post       The selected item changes between complete and incomplete
+    ///
+    private func toggleItem(in checklistID: UUID, at itemIndex: Int) {
+
+        // Find the index of the checklist being updated
+        guard let checklistIndex = checklists.firstIndex(where: { $0.id == checklistID }) else {
+            return
+        }
+
+        let checklist = checklists[checklistIndex]                      /* Retrieve the checklist being updated           */
+        var completedItemIndices = checklist.completedItemIndices       /* Copy the current set of completed item indices */
+
+        // Toggle the completion state of the specified item within the checklist
+        if completedItemIndices.contains(itemIndex) {
+            completedItemIndices.remove(itemIndex)
+        } else {
+            completedItemIndices.insert(itemIndex)
+        }
+
+        // Update the checklist with the new set of completed item indices
+        checklists[checklistIndex] = KanbanChecklist(
+            id:                    checklist.id,
+            title:                 checklist.title,
+            items:                 checklist.items,
+            completedItemIndices:  completedItemIndices
+        )
+    }
+
+
+    ///
+    /// @brief      Update one checklist item's text
+    /// @details    Replaces the matching value-type checklist with an updated item label
+    ///
+    /// @param[in]  checklistID  Identifier of the checklist being updated
+    /// @param[in]  itemIndex    Zero-based index of the item being edited
+    /// @param[in]  text         New display text for the item
+    ///
+    /// @post       The edited text is displayed in the checklist row
+    ///
+    private func updateItem(in checklistID: UUID, at itemIndex: Int, with text: String) {
+        
+        // Find the index of the checklist being updated
+        guard let checklistIndex = checklists.firstIndex(where: { $0.id == checklistID }) else {
+            return
+        }
+
+        // Retrieve the checklist being updated
+        let checklist = checklists[checklistIndex]
+
+        // Ensure the item index is within the bounds of the checklist's items array
+        guard checklist.items.indices.contains(itemIndex) else {
+            return
+        }
+
+        var items = checklist.items     /* Copy the current list of items for modification */
+        items[itemIndex] = text         /* Update the text of the specified item within the checklist */
+
+        // Update the checklist with the modified items array
+        checklists[checklistIndex] = KanbanChecklist(
+            id:                    checklist.id,
+            title:                 checklist.title,
+            items:                 items,
+            completedItemIndices:  checklist.completedItemIndices
+        )
+    }
+
+
+    ///
+    /// @brief      Delete one checklist item
+    /// @details    Removes the item and shifts completed item indices that follow it
+    ///
+    /// @param[in]  checklistID  Identifier of the checklist being updated
+    /// @param[in]  itemIndex    Zero-based index of the item being deleted
+    ///
+    /// @post       The selected item is removed from the checklist
+    ///
+    private func deleteItem(in checklistID: UUID, at itemIndex: Int) {
+
+        // Find the index of the checklist being updated
+        guard let checklistIndex = checklists.firstIndex(where: { $0.id == checklistID }) else {
+            return
+        }
+
+        // Retrieve the checklist being updated
+        let checklist = checklists[checklistIndex]
+
+        // Ensure the item index is within the bounds of the checklist's items array
+        guard checklist.items.indices.contains(itemIndex) else {
+            return
+        }
+
+        var items = checklist.items     /* Copy the current list of items for modification */
+        items.remove(at: itemIndex)     /* Remove the specified item from the checklist    */
+
+        // Recalculate the set of completed item indices after the deletion
+        let completedItemIndices: Set<Int> = Set(
+            checklist.completedItemIndices.compactMap { (index: Int) -> Int? in
+
+                // Skip the index if it matches the deleted item index
+                guard index != itemIndex else {
+                    return nil
+                }
+
+                return index > itemIndex ? index - 1 : index
+            }
+        )
+
+        // Update the checklist with the recalculated completed item indices
+        checklists[checklistIndex] = KanbanChecklist(
+            id:                    checklist.id,
+            title:                 checklist.title,
+            items:                 items,
+            completedItemIndices:  completedItemIndices
+        )
+    }
+
+
+    ///
     /// @brief      Build the card detail presentation
     /// @details    Composes the Trello-inspired sections and keeps the Back action in the bottom safe area
     ///
@@ -192,6 +316,18 @@ struct CardDetailView: View {
                                 
                                 onAddItem: {
                                     addItem(to: checklist.id)
+                                },
+
+                                onToggleItem: { itemIndex in
+                                    toggleItem(in: checklist.id, at: itemIndex)
+                                },
+                                
+                                onUpdateItem: { itemIndex, text in
+                                    updateItem(in: checklist.id, at: itemIndex, with: text)
+                                },
+
+                                onDeleteItem: { itemIndex in
+                                    deleteItem(in: checklist.id, at: itemIndex)
                                 }
                             )
                         }
@@ -410,6 +546,9 @@ struct ChecklistBlock: View {
     let checklist: KanbanChecklist   /* The checklist data rendered by the block           */
     let onDelete: () -> Void         /* The action invoked when the checklist is deleted   */
     let onAddItem: () -> Void        /* The action invoked when a new item is added        */
+    let onToggleItem: (Int) -> Void  /* The action invoked when an item is toggled         */
+    let onUpdateItem: (Int, String) -> Void /* The action invoked when item text is edited */
+    let onDeleteItem: (Int) -> Void  /* The action invoked when an item is deleted         */
 
 
     ///
@@ -438,14 +577,19 @@ struct ChecklistBlock: View {
             .padding(.bottom, 6)
 
             ForEach(Array(checklist.items.enumerated()), id: \.offset) { index, item in
-                HStack(spacing: 10) {
-                    Image(systemName: index < checklist.completed ? "checkmark.square.fill" : "square")
-                        .foregroundStyle(index < checklist.completed ? .blue : .secondary)
-                    Text(item)
-                        .font(.subheadline)
-                    Spacer()
-                }
-                .padding(.vertical, 6)
+                ChecklistItemRow(
+                    item: item,
+                    isCompleted: checklist.completedItemIndices.contains(index),
+                    onToggle: {
+                        onToggleItem(index)
+                    },
+                    onUpdate: { text in
+                        onUpdateItem(index, text)
+                    },
+                    onDelete: {
+                        onDeleteItem(index)
+                    }
+                )
             }
 
             Button(action: onAddItem) {
@@ -458,6 +602,87 @@ struct ChecklistBlock: View {
             .buttonStyle(.plain)
         }
         .padding(.vertical, 6)
+    }
+}
+
+
+// -------------------------------------- MARK: - Checklist Item Row --------------------------- //
+
+///
+/// Displays one touch-friendly checklist item with a custom swipe-to-delete interaction
+///
+/// @section    Purpose
+///     Provide reliable physical-device swipe behavior inside the card's custom ScrollView layout
+///
+struct ChecklistItemRow: View {
+
+    let item: String                  /* The editable item text               */
+    let isCompleted: Bool             /* The current completion state         */
+    let onToggle: () -> Void          /* The action invoked by the checkbox   */
+    let onUpdate: (String) -> Void    /* The action invoked by text editing   */
+    let onDelete: () -> Void          /* The action invoked by delete         */
+
+    @State private var horizontalOffset: CGFloat = 0
+
+
+    var body: some View {
+
+        ZStack(alignment: .trailing) {
+            Button(role: .destructive, action: onDelete) {
+                Image(systemName: "trash")
+                    .foregroundStyle(.white)
+                    .frame(width: 72)
+                    .frame(maxHeight: .infinity)
+                    .background(.red)
+            }
+            .buttonStyle(.plain)
+            .accessibilityLabel("Delete item")
+
+            HStack(spacing: 10) {
+                Button(action: onToggle) {
+                    Image(systemName: isCompleted ? "checkmark.square.fill" : "square")
+                        .foregroundStyle(isCompleted ? .blue : .secondary)
+                }
+                .buttonStyle(.plain)
+                .accessibilityLabel(isCompleted ? "Mark item incomplete" : "Mark item complete")
+
+                TextField("Item", text: Binding(
+                    get: { item },
+                    set: onUpdate
+                ))
+                .font(.subheadline)
+
+                Spacer()
+            }
+            .padding(.vertical, 6)
+            .padding(.horizontal, 2)
+            .background(.background)
+            .offset(x: horizontalOffset)
+            .simultaneousGesture(
+                DragGesture(minimumDistance: 12)
+                    .onChanged { value in
+                        guard abs(value.translation.width) > abs(value.translation.height) else {
+                            return
+                        }
+
+                        horizontalOffset = min(0, max(-72, value.translation.width))
+                    }
+                    .onEnded { value in
+                        guard abs(value.translation.width) > abs(value.translation.height) else {
+                            return
+                        }
+
+                        withAnimation(.easeOut(duration: 0.2)) {
+                            if value.translation.width < -120 {
+                                onDelete()
+                            } else {
+                                horizontalOffset = value.translation.width < -36 ? -72 : 0
+                            }
+                        }
+                    }
+            )
+        }
+        .clipped()
     }
 }
 

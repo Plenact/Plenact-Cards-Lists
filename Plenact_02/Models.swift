@@ -124,19 +124,24 @@ struct KanbanList: Identifiable {
 ///
 struct KanbanChecklist: Identifiable {
 
-    let id:        UUID         /* Unique identifier for the checklist */
-    let title:     String       /* Title of the checklist              */
-    let items:     [String]    /* Items contained within the checklist */
-    let completed: Int         /* Number of completed items            */
+    let id:                    UUID       /* Unique identifier for the checklist       */
+    let title:                 String     /* Title of the checklist                    */
+    let items:                 [String]   /* Items contained within the checklist      */
+    let completedItemIndices:  Set<Int>   /* Zero-based indices of completed items     */
+
+    // Number of completed items within the checklist
+    var completed: Int {
+        completedItemIndices.count
+    }
 
 
-    /// Creates an empty checklist with no completed items.
-    init(id: UUID = UUID(), title: String, items: [String] = [], completed: Int = 0) {
+    /// Creates a checklist with optional initial completion state.
+    init(id: UUID = UUID(), title: String, items: [String] = [], completed: Int = 0, completedItemIndices: Set<Int>? = nil) {
 
-        self.id        = id             /* Unique identifier for the checklist  */
-        self.title     = title          /* Title of the checklist               */
-        self.items     = items          /* Items contained within the checklist */
-        self.completed = completed      /* Number of completed items            */
+        self.id                   = id
+        self.title                = title
+        self.items                = items
+        self.completedItemIndices = completedItemIndices ?? Set(0..<min(completed, items.count))
     }
 }
 
