@@ -721,48 +721,24 @@ struct CardDetailView: View {
                         .accessibilityLabel(titleChecked ? "Uncheck card title" : "Check card title")
 
                         VStack(alignment: .leading, spacing: 5) {
-                            if focusedField == .title {
-                                TextField("Card title", text: $titleText)
-                                    .font(.title2.weight(.bold))
-                                    .focused($focusedField, equals: .title)
-                                    .submitLabel(.done)
-                                    .onSubmit { focusedField = nil }
-                                    .onChange(of: titleText) { _, newValue in
-                                        syncCardState(title: newValue)
-                                    }
-                            } else {
-                                Button {
-                                    focusedField = .title
-                                } label: {
-                                    Text(titleText.capitalized)
-                                        .font(.title2.weight(.bold))
-                                        .foregroundStyle(.primary)
+                            TextField("Card title", text: $titleText)
+                                .font(.title2.weight(.bold))
+                                .focused($focusedField, equals: .title)
+                                .submitLabel(.done)
+                                .onSubmit { focusedField = nil }
+                                .onChange(of: titleText) { _, newValue in
+                                    syncCardState(title: newValue)
                                 }
-                                .buttonStyle(.plain)
-                                .accessibilityLabel("Edit card title")
-                            }
 
-                            if focusedField == .subtitle {
-                                TextField("Card subtitle", text: $subtitleText)
-                                    .font(.subheadline)
-                                    .foregroundStyle(.secondary)
-                                    .focused($focusedField, equals: .subtitle)
-                                    .submitLabel(.done)
-                                    .onSubmit { focusedField = nil }
-                                    .onChange(of: subtitleText) { _, newValue in
-                                        syncCardState(subtitle: newValue)
-                                    }
-                            } else {
-                                Button {
-                                    focusedField = .subtitle
-                                } label: {
-                                    Text(subtitleText)
-                                        .font(.subheadline)
-                                        .foregroundStyle(.secondary)
+                            TextField("Card subtitle", text: $subtitleText)
+                                .font(.subheadline)
+                                .foregroundStyle(.secondary)
+                                .focused($focusedField, equals: .subtitle)
+                                .submitLabel(.done)
+                                .onSubmit { focusedField = nil }
+                                .onChange(of: subtitleText) { _, newValue in
+                                    syncCardState(subtitle: newValue)
                                 }
-                                .buttonStyle(.plain)
-                                .accessibilityLabel("Edit card subtitle")
-                            }
 
                             Text("In list \(card.listTitle)")
                                 .font(.subheadline)
