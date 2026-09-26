@@ -554,7 +554,7 @@ struct ContentView: View {
             lists
                 .flatMap(\.cards)
                 .flatMap { $0.attachments ?? [] }
-                .map(\.fileName)
+                .compactMap(\.fileName)
         )
 
         CardAttachmentStore.removeUnreferencedFiles(keeping: referencedFileNames)

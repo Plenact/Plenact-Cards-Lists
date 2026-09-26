@@ -10,51 +10,54 @@
 // @notes      Cards persist attachment metadata and IDs; image data remains outside the board JSON
 //
 // --------------------------------------------------------------------------------------------------
+import AVKit
 import Foundation
 import PhotosUI
 import SwiftUI
 import UIKit
 
 
+/// Identifies the content type of a card attachment.
+enum KanbanAttachmentKind: String, Codable {
+    case photo
+    case video
+    case link
+}
+
+
 ///
-/// Identifies one locally stored photo attached to a card
+/// Identifies one photo, video, or web link attached to a card
 ///
 /// @section    Purpose
-///     Persist the photo's stable identity, relative filename, and import date without embedding its bytes in the board
+///     Persist stable attachment identity and lightweight file or URL metadata without embedding image bytes in the board
 ///
 struct KanbanAttachment: Identifiable, Hashable, Codable {
 
     let id: UUID
-    let fileName: String
+    let fileName: String?
+    let url: URL?
+    let mediaKind: KanbanAttachmentKind?
     let addedAt: Date
 
-    ///
-    /// @fcn        KanbanAttachment.init(id:fileName:addedAt:)
-    /// @brief      Initialize metadata for one stored photo attachment
-    /// @details    Stores a stable attachment identity, its app-container filename, and its import timestamp
-    ///
-    /// @param[in]  id        Stable identifier for the attachment; generated when omitted
-    /// @param[in]  fileName  Filename of the image data in the app's attachment directory
-    /// @param[in]  addedAt   Import timestamp; defaults to the current date and time
-    ///
-    /// @return     (KanbanAttachment) configured photo attachment metadata
-    ///
-    /// @pre        fileName refers to the image data stored by CardAttachmentStore
-    /// @post       The attachment metadata contains the supplied identity, path name, and timestamp
-    ///
-    init(id: UUID = UUID(), fileName: String, addedAt: Date = .now) {
+    var kind: KanbanAttachmentKind {
+        mediaKind ?? (url == nil ? .photo : .link)
+    }
+
+    init(id: UUID = UUID(), fileName: String? = nil, url: URL? = nil, mediaKind: KanbanAttachmentKind? = nil, addedAt: Date = .now) {
         self.id = id
         self.fileName = fileName
+        self.url = url
+        self.mediaKind = mediaKind
         self.addedAt = addedAt
     }
 }
 
 
 ///
-/// Stores imported card photos in the app's private Documents directory
+/// Stores imported card photos in the app's private Documents directory and validates web links
 ///
 /// @section    Purpose
-///     Keep image data out of UserDefaults while allowing board JSON to retain small attachment records
+///     Keep image data out of UserDefaults while allowing board JSON to retain lightweight photo and link records
 ///
 /// @note       Files no longer referenced by any card can be removed with removeUnreferencedFiles(keeping:)
 ///
@@ -63,29 +66,33 @@ enum CardAttachmentStore {
     private static let directoryName = "CardAttachments"
 
     ///
-    /// @fcn        CardAttachmentStore.saveImage(_:)
-    /// @brief      Save selected image data to the app's private attachment directory
-    /// @details    Writes the image atomically under a unique filename and returns metadata referencing that file
+    /// @fcn        CardAttachmentStore.saveMedia(_:kind:fileExtension:)
+    /// @brief      Save selected photo or video data to the app's private attachment directory
+    /// @details    Writes the media atomically under a unique filename and returns metadata referencing that file
     ///
-    /// @param[in]  imageData  Encoded image data transferred from the system photo picker
+    /// @param[in]  mediaData      Encoded photo or video data transferred from the system photo picker
+    /// @param[in]  kind           Media kind represented by the saved data
+    /// @param[in]  fileExtension  Preferred file extension supplied by the Photos library
     ///
-    /// @return     (KanbanAttachment) metadata for the newly stored image
+    /// @return     (KanbanAttachment) metadata for the newly stored media file
     ///
-    /// @pre        imageData contains transferable image bytes
-    /// @post       A new image file exists in the app's Documents/CardAttachments directory
+    /// @pre        mediaData contains transferable photo or video bytes
+    /// @post       A new media file exists in the app's Documents/CardAttachments directory
     ///
     /// @throws     File-system error if the Documents directory cannot be obtained, created, or written
     ///
-    static func saveImage(_ imageData: Data) throws -> KanbanAttachment {
+    static func saveMedia(_ mediaData: Data, kind: KanbanAttachmentKind, fileExtension: String) throws -> KanbanAttachment {
 
         let attachmentID = UUID()
-        let fileName     = "\(attachmentID.uuidString).image"
+        let normalizedExtension = fileExtension.trimmingCharacters(in: CharacterSet(charactersIn: ". "))
+        let safeExtension = normalizedExtension.isEmpty ? (kind == .video ? "mov" : "jpg") : normalizedExtension
+        let fileName     = "\(attachmentID.uuidString).\(safeExtension)"
         let directoryURL = try attachmentsDirectory()
         let fileURL      = directoryURL.appendingPathComponent(fileName, isDirectory: false)
 
-        try imageData.write(to: fileURL, options: .atomic)
+        try mediaData.write(to: fileURL, options: .atomic)
 
-        return KanbanAttachment(id: attachmentID, fileName: fileName)
+        return KanbanAttachment(id: attachmentID, fileName: fileName, mediaKind: kind)
     }
 
     ///
@@ -100,15 +107,35 @@ enum CardAttachmentStore {
     /// @pre        attachment.fileName is the filename returned when the image was saved
     /// @post       No file data or attachment metadata is modified
     ///
-    static func imageURL(for attachment: KanbanAttachment) -> URL? {
+    static func fileURL(for attachment: KanbanAttachment) -> URL? {
 
-        guard let documentsURL = FileManager.default.urls(for: .documentDirectory, in: .userDomainMask).first else {
+        guard let fileName = attachment.fileName,
+              let documentsURL = FileManager.default.urls(for: .documentDirectory, in: .userDomainMask).first else {
             return nil
         }
 
         return documentsURL
             .appendingPathComponent(directoryName, isDirectory: true)
-            .appendingPathComponent(attachment.fileName, isDirectory: false)
+            .appendingPathComponent(fileName, isDirectory: false)
+    }
+
+    static func imageURL(for attachment: KanbanAttachment) -> URL? {
+        guard attachment.kind == .photo else { return nil }
+        return fileURL(for: attachment)
+    }
+
+    static func webURL(from text: String) -> URL? {
+        let trimmedText = text.trimmingCharacters(in: .whitespacesAndNewlines)
+
+        guard let components = URLComponents(string: trimmedText),
+              let scheme = components.scheme?.lowercased(),
+              ["http", "https"].contains(scheme),
+              let host = components.host,
+              !host.isEmpty else {
+            return nil
+        }
+
+        return components.url
     }
 
     ///
@@ -167,41 +194,160 @@ enum CardAttachmentStore {
 }
 
 
-///
-/// Provides the Quick Action tile that opens the system photo picker
-///
-/// @section    Purpose
-///     Let users select multiple images from their photo library for attachment to the open card
-///
-struct CardPhotoPickerTile: View {
+/// Sources available when adding an attachment to a card.
+enum CardAttachmentSource: String, CaseIterable, Identifiable {
 
-    @Binding var selection: [PhotosPickerItem]
+    case trello
+    case confluence
+    case jira
+    case file
+    case documentScanner
+    case qrCode
+    case camera
+    case photoOrVideo
+    case link
+    case clipboard
 
-    ///
-    /// @fcn        CardPhotoPickerTile.body
-    /// @brief      Build the Add Attachment photo-picker tile
-    /// @details    Presents the system photo library and allows selection of up to twelve images
-    ///
-    /// @return     (some View) styled Quick Action tile that updates the bound PhotosPickerItem selection
-    ///
-    /// @pre        selection is bound to the owning card detail view's import state
-    /// @post       Chosen image items are returned through selection; no image files are written by this view
-    ///
-    var body: some View {
+    var id: String { rawValue }
 
-        PhotosPicker(selection: $selection, maxSelectionCount: 12, matching: .images) {
-
-            Label("Add Attachment", systemImage: "paperclip")
-                .font(.caption)
-                .foregroundStyle(.primary)
-                .frame(maxWidth: .infinity, alignment: .leading)
-                .padding(12)
-                .background(Color(.secondarySystemGroupedBackground))
-                .clipShape(RoundedRectangle(cornerRadius: 8, style: .continuous))
-                .tint(.cyan)
+    var title: String {
+        switch self {
+            case .trello:         "Trello"
+            case .confluence:     "Confluence"
+            case .jira:           "Jira"
+            case .file:           "File"
+            case .documentScanner:"Document scanner"
+            case .qrCode:         "QR code"
+            case .camera:         "Camera"
+            case .photoOrVideo:   "Photo or video"
+            case .link:           "Link"
+            case .clipboard:      "Clipboard"
         }
-        .buttonStyle(.plain)
-        .accessibilityLabel("Add photos to card")
+    }
+
+    var symbolName: String {
+        switch self {
+            case .trello:         "square.split.2x2"
+            case .confluence:     "water.waves"
+            case .jira:           "checkmark.circle"
+            case .file:           "paperclip"
+            case .documentScanner:"doc.viewfinder"
+            case .qrCode:         "qrcode.viewfinder"
+            case .camera:         "camera"
+            case .photoOrVideo:   "photo.on.rectangle"
+            case .link:           "link"
+            case .clipboard:      "doc.on.clipboard"
+        }
+    }
+}
+
+
+/// Presents attachment sources and dispatches supported source actions.
+struct CardAttachmentSourceSheet: View {
+
+    @Binding var photoSelection: [PhotosPickerItem]
+    let onAddLink: () -> Void
+    let onPasteClipboard: () -> Void
+    let onComingSoon: (String) -> Void
+
+    @Environment(\.dismiss) private var dismiss
+
+    private func select(_ source: CardAttachmentSource) {
+        switch source {
+            case .link:
+                onAddLink()
+            case .clipboard:
+                onPasteClipboard()
+                dismiss()
+            case .photoOrVideo:
+                break
+            default:
+                onComingSoon(source.title)
+        }
+    }
+
+    var body: some View {
+        NavigationStack {
+            List {
+                ForEach(CardAttachmentSource.allCases) { source in
+                    if source == .photoOrVideo {
+                        PhotosPicker(selection: $photoSelection, maxSelectionCount: 12, matching: .any(of: [.images, .videos])) {
+                            Label(source.title, systemImage: source.symbolName)
+                                .foregroundStyle(.primary)
+                        }
+                    } else {
+                        Button {
+                            select(source)
+                        } label: {
+                            Label(source.title, systemImage: source.symbolName)
+                                .foregroundStyle(.primary)
+                        }
+                    }
+                }
+            }
+            .navigationTitle("Add attachment from")
+            .navigationBarTitleDisplayMode(.inline)
+            .toolbar {
+                ToolbarItem(placement: .topBarLeading) {
+                    Button("Close", systemImage: "xmark") {
+                        dismiss()
+                    }
+                }
+            }
+        }
+        .presentationDetents([.medium, .large])
+        .presentationDragIndicator(.visible)
+    }
+}
+
+
+/// Collects and validates a web address to attach to a card.
+struct CardLinkAttachmentSheet: View {
+
+    let onSave: (URL) -> Void
+
+    @Environment(\.dismiss) private var dismiss
+    @State private var urlDraft = ""
+
+    private var validatedURL: URL? {
+        CardAttachmentStore.webURL(from: urlDraft)
+    }
+
+    var body: some View {
+        NavigationStack {
+            Form {
+                Section("Link") {
+                    TextField("https://example.com", text: $urlDraft)
+                        .keyboardType(.URL)
+                        .textInputAutocapitalization(.never)
+                        .autocorrectionDisabled()
+                        .onSubmit(saveLink)
+                }
+            }
+            .navigationTitle("Add link")
+            .navigationBarTitleDisplayMode(.inline)
+            .toolbar {
+                ToolbarItem(placement: .cancellationAction) {
+                    Button("Cancel") {
+                        dismiss()
+                    }
+                }
+                ToolbarItem(placement: .confirmationAction) {
+                    Button("Add") {
+                        saveLink()
+                    }
+                    .disabled(validatedURL == nil)
+                }
+            }
+        }
+        .presentationDetents([.medium])
+        .presentationDragIndicator(.visible)
+    }
+
+    private func saveLink() {
+        guard let validatedURL else { return }
+        onSave(validatedURL)
+        dismiss()
     }
 }
 
@@ -230,7 +376,25 @@ struct CardAttachmentThumbnail: View {
 
         Group {
 
-            if let imageURL = CardAttachmentStore.imageURL(for: attachment),
+            if let url = attachment.url {
+                VStack(spacing: 6) {
+                    Image(systemName: "link")
+                        .font(.title2)
+                    Text(url.host ?? url.absoluteString)
+                        .font(.caption2)
+                        .lineLimit(2)
+                        .multilineTextAlignment(.center)
+                }
+                .foregroundStyle(.secondary)
+                .frame(maxWidth: .infinity, maxHeight: .infinity)
+                .background(Color(.secondarySystemGroupedBackground))
+            } else if attachment.kind == .video {
+                Image(systemName: "play.rectangle.fill")
+                    .font(.title2)
+                    .foregroundStyle(.secondary)
+                    .frame(maxWidth: .infinity, maxHeight: .infinity)
+                    .background(Color(.secondarySystemGroupedBackground))
+            } else if let imageURL = CardAttachmentStore.imageURL(for: attachment),
                let image = UIImage(contentsOfFile: imageURL.path) {
                 Image(uiImage: image)
                     .resizable()
@@ -275,8 +439,11 @@ struct CardAttachmentPreview: View {
 
         NavigationStack {
             Group {
-        
-                if let imageURL = CardAttachmentStore.imageURL(for: attachment),
+
+                if attachment.kind == .video,
+                   let videoURL = CardAttachmentStore.fileURL(for: attachment) {
+                    VideoPlayer(player: AVPlayer(url: videoURL))
+                } else if let imageURL = CardAttachmentStore.imageURL(for: attachment),
                    let image = UIImage(contentsOfFile: imageURL.path) {
                     Image(uiImage: image)
                         .resizable()

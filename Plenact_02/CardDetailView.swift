@@ -12,6 +12,7 @@
 import SwiftUI
 import PhotosUI
 import UIKit
+import UniformTypeIdentifiers
 
 
 /// Identifies a checklist's requested position within its card.
@@ -73,6 +74,8 @@ struct CardDetailView: View {
         case date(DateField)                        /* Date picker sheet for editing a specific date field */
         case members                                /* Card member management sheet                        */
         case labels                                 /* Card label library and assignment picker            */
+        case attachmentSources                      /* Attachment source chooser                           */
+        case addLink                                /* Manual web-link entry sheet                          */
         case attachmentPreview(KanbanAttachment)    /* Preview of an attached photo                        */
 
         var id: String {                            /* Stable identity for the active sheet                */
@@ -81,6 +84,8 @@ struct CardDetailView: View {
                 case .date(let field):                   "date-\(field.id)"
                 case .members:                           "members"
                 case .labels:                            "labels"
+                case .attachmentSources:                 "attachment-sources"
+                case .addLink:                           "add-link"
                 case .attachmentPreview(let attachment): "attachment-\(attachment.id.uuidString)"
             }
         }
@@ -182,8 +187,8 @@ struct CardDetailView: View {
     @State private var commentDraft = ""                     /* Text currently entered in the comment composer               */
     @State private var dismissedActivityIDs: Set<String>     /* IDs of activity entries that have been dismissed by the user */
     @State private var activityFilter: ActivityFilter = .all /* The currently selected activity filter for the card          */
-    @State private var showingPhotoImportError = false       /* Whether a photo import error is presented                    */
-    @State private var photoImportErrorMessage = ""          /* Explanation shown when a selected photo cannot be imported   */
+    @State private var showingAttachmentNotice = false       /* Whether an attachment notice is presented                    */
+    @State private var attachmentNoticeMessage = ""          /* Explanation shown for failed or unavailable sources          */
 
     ///
     /// @brief      Initialize the card detail state
@@ -245,12 +250,12 @@ struct CardDetailView: View {
     ///
     /// @fcn        CardDetailView.importPhotos(from:)
     /// @brief      Import selected photo-library items as card attachments
-    /// @details    Loads each selected image, stores successful transfers in the app container,
+    /// @details    Loads each selected photo or video, stores successful transfers in the app container,
     ///             synchronizes the attachment metadata to the card, and reports partial failures
     ///
     /// @param[in]  photoItems  PhotosPicker items selected for the current card
     ///
-    /// @return     (Void) updates the card with successfully imported photo attachments
+    /// @return     (Void) updates the card with successfully imported photo and video attachments
     ///
     /// @pre        photoItems were selected from the PhotosPicker for this card
     /// @post       The selection is cleared; saved attachment records are synchronized to board state
@@ -263,25 +268,58 @@ struct CardDetailView: View {
 
         for photoItem in photoItems {
             do {
-                guard let imageData = try await photoItem.loadTransferable(type: Data.self) else {
+                guard let mediaData = try await photoItem.loadTransferable(type: Data.self) else {
                     importFailed = true
                     continue
                 }
 
-                attachments.append(try CardAttachmentStore.saveImage(imageData))
+                let contentType = photoItem.supportedContentTypes.first
+                let isVideo = photoItem.supportedContentTypes.contains {
+                    $0.conforms(to: .movie) || $0.conforms(to: .video)
+                }
+                let mediaKind: KanbanAttachmentKind = isVideo ? .video : .photo
+                let fileExtension = contentType?.preferredFilenameExtension ?? (isVideo ? "mov" : "jpg")
+
+                attachments.append(try CardAttachmentStore.saveMedia(mediaData, kind: mediaKind, fileExtension: fileExtension))
             } catch {
                 importFailed = true
             }
         }
 
         selectedPhotoItems = []
+        activeSheet = nil
 
         syncCardState(attachments: attachments)
 
         if importFailed {
-            photoImportErrorMessage = "One or more selected photos could not be added. Please try again."
-            showingPhotoImportError = true
+            attachmentNoticeMessage = "One or more selected photos or videos could not be added. Please try again."
+            showingAttachmentNotice = true
         }
+    }
+
+    private func addWebLink(_ url: URL) {
+        attachments.append(KanbanAttachment(url: url, mediaKind: .link))
+        activeSheet = nil
+        syncCardState(attachments: attachments)
+    }
+
+    private func addClipboardLink() {
+        let clipboardText = UIPasteboard.general.url?.absoluteString ?? UIPasteboard.general.string ?? ""
+
+        guard let url = CardAttachmentStore.webURL(from: clipboardText) else {
+            attachmentNoticeMessage = "The clipboard does not contain a valid web link."
+            showingAttachmentNotice = true
+            activeSheet = nil
+            return
+        }
+
+        addWebLink(url)
+    }
+
+    private func showAttachmentSourceComingSoon(_ source: String) {
+        attachmentNoticeMessage = "\(source) attachments are coming soon."
+        showingAttachmentNotice = true
+        activeSheet = nil
     }
 
     ///
@@ -1022,7 +1060,12 @@ struct CardDetailView: View {
                         LazyVGrid(columns: [GridItem(.flexible()), GridItem(.flexible())], spacing: 8) {
 
                             ActionTile(title: "Add Checklist",  icon: "checklist", color: .green,  action: { addChecklist(using: scrollProxy) })
-                            CardPhotoPickerTile(selection: $selectedPhotoItems)
+                            ActionTile(
+                                title: "Add Attachment",
+                                icon: "paperclip",
+                                color: .cyan,
+                                action: { activeSheet = .attachmentSources }
+                            )
                             ActionTile(title: "Members",        icon: "person.2",  color: .purple, action: { activeSheet = .members })
                         }
                     }
@@ -1031,20 +1074,28 @@ struct CardDetailView: View {
                         DetailSection(title: "Attachments") {
                             LazyVGrid(columns: [GridItem(.adaptive(minimum: 92), spacing: 8)], spacing: 8) {
                                 ForEach(attachments) { attachment in
-                                    Button {
-                                        activeSheet = .attachmentPreview(attachment)
-                                    } label: {
-                                        CardAttachmentThumbnail(attachment: attachment)
+                                    Group {
+                                        if let url = attachment.url {
+                                            Link(destination: url) {
+                                                CardAttachmentThumbnail(attachment: attachment)
+                                            }
+                                        } else {
+                                            Button {
+                                                activeSheet = .attachmentPreview(attachment)
+                                            } label: {
+                                                CardAttachmentThumbnail(attachment: attachment)
+                                            }
+                                            .buttonStyle(.plain)
+                                        }
                                     }
-                                    .buttonStyle(.plain)
                                     .contextMenu {
                                         Button(role: .destructive) {
                                             removeAttachment(attachment)
                                         } label: {
-                                            Label("Remove photo", systemImage: "trash")
+                                            Label("Remove attachment", systemImage: "trash")
                                         }
                                     }
-                                    .accessibilityLabel("View attached photo")
+                                    .accessibilityLabel(attachment.url == nil ? "View attached media" : "Open attached link")
                                 }
                             }
                         }
@@ -1336,10 +1387,10 @@ struct CardDetailView: View {
                 await importPhotos(from: photoItems)
             }
         }
-        .alert("Couldn't add photo", isPresented: $showingPhotoImportError) {
+        .alert("Attachment notice", isPresented: $showingAttachmentNotice) {
             Button("OK", role: .cancel) {}
         } message: {
-            Text(photoImportErrorMessage)
+            Text(attachmentNoticeMessage)
         }
         .sheet(item: $activeSheet) { sheet in
             switch sheet {
@@ -1385,6 +1436,18 @@ struct CardDetailView: View {
                         syncCardState(labelIDs: updatedLabelIDs)
                     }
                     .presentationDetents([.large])
+
+                case .attachmentSources:
+                    CardAttachmentSourceSheet(
+                        photoSelection: $selectedPhotoItems,
+                        onAddLink: { activeSheet = .addLink },
+                        onPasteClipboard: addClipboardLink,
+                        onComingSoon: showAttachmentSourceComingSoon
+                    )
+
+                case .addLink:
+                    CardLinkAttachmentSheet(onSave: addWebLink)
+
                 case .attachmentPreview(let attachment):
                     CardAttachmentPreview(attachment: attachment)
             }
