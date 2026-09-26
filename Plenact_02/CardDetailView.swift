@@ -352,6 +352,34 @@ struct CardDetailView: View {
         checklists.removeAll { $0.id == checklistID }
         syncCardState()
     }
+
+    ///
+    /// @fcn        CardDetailView.renameChecklist(with:to:)
+    /// @brief      Rename a checklist on the current card
+    /// @details    Trims the proposed title, preserves the checklist's items and completion state, and syncs the card
+    ///
+    /// @param[in]  checklistID  Stable identifier of the checklist to rename
+    /// @param[in]  title        Proposed checklist title
+    ///
+    /// @return     (Void) updates the checklist and parent card when the title is non-empty
+    ///
+    /// @pre        checklistID identifies a checklist in the current card
+    /// @post       The checklist displays the trimmed title; blank titles leave state unchanged
+    ///
+    private func renameChecklist(with checklistID: UUID, to title: String) {
+        guard let checklistIndex = checklists.firstIndex(where: { $0.id == checklistID }) else { return }
+        let trimmedTitle = title.trimmingCharacters(in: .whitespacesAndNewlines)
+        guard !trimmedTitle.isEmpty else { return }
+
+        let checklist = checklists[checklistIndex]
+        checklists[checklistIndex] = KanbanChecklist(
+            id: checklist.id,
+            title: trimmedTitle,
+            items: checklist.items,
+            completedItemIndices: checklist.completedItemIndices
+        )
+        syncCardState()
+    }
     
     ///
     /// @brief      Append a new item to a checklist
@@ -506,6 +534,48 @@ struct CardDetailView: View {
             completedItemIndices:  completedItemIndices
         )
         syncCardState()
+    }
+
+    ///
+    /// @fcn        CardDetailView.checklistBlock(for:)
+    /// @brief      Build a checklist block wired to card checklist actions
+    /// @details    Connects row actions to checklist state handlers and supplies the one-time first-item focus request
+    ///
+    /// @param[in]  checklist  Checklist data and identity used to configure the block
+    ///
+    /// @return     (some View) identified checklist block with edit, completion, add, delete, and rename actions
+    ///
+    /// @pre        checklist belongs to the current card's checklist collection
+    /// @post       Rendering the block does not mutate checklist state
+    ///
+    @ViewBuilder
+    private func checklistBlock(for checklist: KanbanChecklist) -> some View {
+        ChecklistBlock(
+            checklist: checklist,
+            onDelete: {
+                deleteChecklist(with: checklist.id)
+            },
+            onAddItem: {
+                addItem(to: checklist.id)
+            },
+            onToggleItem: { itemIndex in
+                toggleItem(in: checklist.id, at: itemIndex)
+            },
+            onUpdateItem: { itemIndex, text in
+                updateItem(in: checklist.id, at: itemIndex, with: text)
+            },
+            onDeleteItem: { itemIndex in
+                deleteItem(in: checklist.id, at: itemIndex)
+            },
+            onRename: { title in
+                renameChecklist(with: checklist.id, to: title)
+            },
+            focusFirstItem: checklist.id == checklistToFocus,
+            onFirstItemFocused: {
+                checklistToFocus = nil
+            }
+        )
+        .id(checklist.id)
     }
 
 
@@ -703,36 +773,7 @@ struct CardDetailView: View {
                     DetailSection(title: "Checklists", trailing: "plus", trailingAction: { addChecklist(using: scrollProxy) }) {
 
                         ForEach(checklists) { checklist in
-
-                            ChecklistBlock(
-
-                                checklist: checklist,
-
-                                onDelete: {
-                                    deleteChecklist(with: checklist.id)
-                                },
-                                
-                                onAddItem: {
-                                    addItem(to: checklist.id)
-                                },
-
-                                onToggleItem: { itemIndex in
-                                    toggleItem(in: checklist.id, at: itemIndex)
-                                },
-                                
-                                onUpdateItem: { itemIndex, text in
-                                    updateItem(in: checklist.id, at: itemIndex, with: text)
-                                },
-
-                                onDeleteItem: { itemIndex in
-                                    deleteItem(in: checklist.id, at: itemIndex)
-                                },
-                                focusFirstItem: checklist.id == checklistToFocus,
-                                onFirstItemFocused: {
-                                    checklistToFocus = nil
-                                }
-                            )
-                            .id(checklist.id)
+                            checklistBlock(for: checklist)
                         }
                     }
 
@@ -1043,8 +1084,12 @@ struct ChecklistBlock: View {
     let onToggleItem: (Int) -> Void         /* The action invoked when an item is toggled                              */
     let onUpdateItem: (Int, String) -> Void /* The action invoked when item text is edited                             */
     let onDeleteItem: (Int) -> Void         /* The action invoked when an item is deleted                              */
+    let onRename: (String) -> Void          /* The action invoked when the checklist title is renamed                  */
     let focusFirstItem: Bool                /* Whether the first item should be focused when the checklist is rendered */
     let onFirstItemFocused: () -> Void      /* The action invoked when the first item receives focus                   */
+
+    @State private var isRenaming = false   /* Whether the checklist title is currently being renamed                  */
+    @State private var titleDraft = ""      /* The draft text for the checklist title being edited                     */
 
 
     ///
@@ -1068,12 +1113,23 @@ struct ChecklistBlock: View {
                     .font(.caption)
                     .foregroundStyle(.secondary)
 
-                Button(action: onDelete) {
+                Menu {
+                    Button {
+                        titleDraft = checklist.title
+                        isRenaming = true
+                    } label: {
+                        Label("Rename", systemImage: "pencil")
+                    }
+
+                    Button(role: .destructive, action: onDelete) {
+                        Label("Delete", systemImage: "trash")
+                    }
+                } label: {
                     Image(systemName: "ellipsis")
                         .foregroundStyle(.secondary)
                 }
                 .buttonStyle(.plain)
-                .accessibilityLabel("Delete checklist")
+                .accessibilityLabel("Checklist actions")
             }
             .padding(.bottom, 6)
 
@@ -1110,6 +1166,16 @@ struct ChecklistBlock: View {
             .buttonStyle(.plain)
         }
         .padding(.vertical, 6)
+        .alert("Rename Checklist", isPresented: $isRenaming) {
+            TextField("Checklist title", text: $titleDraft)
+            Button("Cancel", role: .cancel) {}
+            Button("Save") {
+                onRename(titleDraft)
+            }
+            .disabled(titleDraft.trimmingCharacters(in: .whitespacesAndNewlines).isEmpty)
+        } message: {
+            Text("Enter a name for this checklist.")
+        }
     }
 }
 
