@@ -732,9 +732,20 @@ struct CardDetailView: View {
 
                             TextField("Card subtitle", text: $subtitleText)
                                 .font(.subheadline)
-                                .foregroundStyle(.secondary)
+                                .foregroundColor(focusedField == .subtitle ? Color.secondary : Color.clear)
                                 .focused($focusedField, equals: .subtitle)
                                 .submitLabel(.done)
+                                .overlay(alignment: .leading) {
+                                    if focusedField != .subtitle {
+                                        Text(subtitleText)
+                                            .font(.subheadline)
+                                            .foregroundStyle(.secondary)
+                                            .lineLimit(1)
+                                            .truncationMode(.tail)
+                                            .allowsHitTesting(false)
+                                            .accessibilityHidden(true)
+                                    }
+                                }
                                 .onSubmit { focusedField = nil }
                                 .onChange(of: subtitleText) { _, newValue in
                                     syncCardState(subtitle: newValue)

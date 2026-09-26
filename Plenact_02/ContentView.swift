@@ -1067,7 +1067,8 @@ struct KanbanCardView: View {
             Text(card.subtitle)
                 .font(.subheadline)
                 .foregroundStyle(.secondary)
-                .lineLimit(2)
+                .lineLimit(1)
+                .truncationMode(.tail)
 
             HStack(spacing: 14) {
 
