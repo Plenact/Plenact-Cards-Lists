@@ -19,7 +19,7 @@ import Foundation
 ///
 /// @note   Derived values are deterministic so the board and previews remain reproducible
 ///
-struct KanbanCard: Identifiable, Hashable {
+struct KanbanCard: Identifiable, Hashable, Codable {
 
     let id:             Int                 /* Stable numeric identifier for the card             */
     let word:           String              /* Display word shown as the card's title             */
@@ -31,6 +31,7 @@ struct KanbanCard: Identifiable, Hashable {
     var checklists:     [KanbanChecklist]   /* List of checklists associated with the card        */
     var comments:       [KanbanComment]     /* Comments posted to the card's activity             */
     var members:        [String]            /* User names assigned to the card                    */
+    var labelIDs:       [String]            /* Stable IDs of labels assigned to the card          */
     var dismissedActivityIDs: Set<String>   /* Generated activity entries removed by the user     */
     var descriptionOverride: String?        /* Optional user-edited description                   */
     var subtitleOverride: String?           /* Optional user-edited board subtitle                */
@@ -76,7 +77,7 @@ struct KanbanCard: Identifiable, Hashable {
     /// @pre        All values should be valid for the board's deterministic sample data
     /// @post       The card contains the provided identity, title text, and checked state
     ///
-    init(id: Int, word: String, listTitle: String, isDivider: Bool = false, isTitleChecked: Bool = false, startDate: Date? = nil, dueDate: Date? = nil, checklists: [KanbanChecklist]? = nil, comments: [KanbanComment] = [], members: [String] = [], dismissedActivityIDs: Set<String> = [], descriptionOverride: String? = nil, subtitleOverride: String? = nil) {
+    init(id: Int, word: String, listTitle: String, isDivider: Bool = false, isTitleChecked: Bool = false, startDate: Date? = nil, dueDate: Date? = nil, checklists: [KanbanChecklist]? = nil, comments: [KanbanComment] = [], members: [String] = [], labelIDs: [String] = [], dismissedActivityIDs: Set<String> = [], descriptionOverride: String? = nil, subtitleOverride: String? = nil) {
 
         self.id                   = id                      /* Stable numeric identifier for the card             */
         self.word                 = word                    /* Display word shown as the card's title             */
@@ -87,6 +88,7 @@ struct KanbanCard: Identifiable, Hashable {
         self.dueDate              = dueDate                 /* Optional due date for the card                     */
         self.comments             = comments                /* Array of comments associated with the card         */
         self.members              = members                 /* Names of users assigned to the card                */
+        self.labelIDs             = labelIDs                /* Stable IDs of labels assigned to the card          */
         self.dismissedActivityIDs = dismissedActivityIDs    /* Set of activity IDs that were dismissed by user    */
         self.descriptionOverride  = descriptionOverride     /* Optional user-edited description                   */
         self.subtitleOverride     = subtitleOverride        /* Optional user-edited subtitle                      */
@@ -213,7 +215,7 @@ struct KanbanCard: Identifiable, Hashable {
 /// @section    Purpose
 ///     Group an ordered collection of cards with the list title and supporting board copy
 ///
-struct KanbanList: Identifiable {
+struct KanbanList: Identifiable, Hashable, Codable {
 
     let id:        Int              /* Unique identifier for the kanban list */
     let title:     String           /* Title of the kanban list              */
@@ -237,7 +239,7 @@ struct KanbanList: Identifiable {
 /// @section    Purpose
 ///     Provide a small value type for rendering both seeded and newly created checklist groups
 ///
-struct KanbanChecklist: Identifiable, Hashable {
+struct KanbanChecklist: Identifiable, Hashable, Codable {
 
     let id:                    UUID       /* Unique identifier for the checklist       */
     let title:                 String     /* Title of the checklist                    */
@@ -264,8 +266,7 @@ struct KanbanChecklist: Identifiable, Hashable {
 // -------------------------------------- MARK: - Card Comment ------------------------------- //
 
 /// A comment posted to a kanban card's activity feed
-struct KanbanComment: Identifiable, Hashable {
-
+struct KanbanComment: Identifiable, Hashable, Codable {
     let id:        UUID         /* Unique identifier for the comment                 */
     let author:    String       /* Author of the comment                             */
     let body:      String       /* Body text of the comment                          */
@@ -276,6 +277,63 @@ struct KanbanComment: Identifiable, Hashable {
         self.author = author
         self.body = body
         self.createdAt = createdAt
+    }
+}
+
+
+///
+/// Persists the active board as a Codable snapshot in local user defaults
+///
+/// @section    Purpose
+///     Restore card and list state across app launches without requiring a remote service
+///
+/// @details    Decodes the saved board when available and falls back to deterministic sample data on first launch or invalid data
+///
+/// @note       The storage key is versioned so future persistence format changes can be migrated deliberately
+///
+enum KanbanBoardPersistence {
+
+    private static let storageKey = "Plenact.Board.v1"
+
+    ///
+    /// @fcn        KanbanBoardPersistence.loadLists
+    /// @brief      Load the saved board lists
+    /// @details    Decodes the locally stored JSON snapshot and returns sample data if no valid snapshot exists
+    ///
+    /// @return     ([KanbanList]) restored board lists or the deterministic starter board
+    ///
+    /// @pre        UserDefaults may contain data encoded by this persistence format
+    /// @post       Stored data is unchanged; callers receive a usable board list value
+    ///
+    static func loadLists() -> [KanbanList] {
+
+        guard let data = UserDefaults.standard.data(forKey: storageKey),
+
+              let lists = try? JSONDecoder().decode([KanbanList].self, from: data) else {
+                
+            return SampleData.lists
+        }
+
+        return lists
+    }
+
+    ///
+    /// @fcn        KanbanBoardPersistence.saveLists(_:)
+    /// @brief      Save the current board lists
+    /// @details    Encodes the supplied list and card state as JSON and writes it to the versioned user-defaults key
+    ///
+    /// @param[in]  lists  Board lists and their current card state
+    ///
+    /// @return     (Void) stores the encoded board snapshot when encoding succeeds
+    ///
+    /// @pre        lists contains the current in-memory board state
+    /// @post       A valid encoded snapshot is stored locally; encoding failure leaves prior stored data unchanged
+    ///
+    static func saveLists(_ lists: [KanbanList]) {
+
+        guard let data = try? JSONEncoder().encode(lists) else { return }
+
+        UserDefaults.standard.set(data, forKey: storageKey)
     }
 }
 
@@ -318,12 +376,13 @@ enum SampleData {
             let cards = (0..<10).map { _ -> KanbanCard in
 
                 let card = KanbanCard(
-                                      id:             globalIndex,
-                                      word:           words[globalIndex % words.count],
-                                      listTitle:      title,
-                                                                            isTitleChecked: globalIndex % 3 == 0,
-                                                                            members:        ["Justin Reina"]
-                                     )
+                    id:             globalIndex,
+                    word:           words[globalIndex % words.count],
+                    listTitle:      title,
+                    isTitleChecked: globalIndex % 3 == 0,
+                    members:        ["Justin Reina"],
+                    labelIDs:       [LabelLibrary.starterLabelIDs[globalIndex % LabelLibrary.starterLabelIDs.count]]
+                )
 
                 globalIndex += 1
 

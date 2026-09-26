@@ -70,12 +70,14 @@ struct CardDetailView: View {
 
         case date(DateField)        /* Date picker sheet for editing a specific date field */
         case members                /* Card member management sheet                        */
+        case labels                 /* Card label library and assignment picker            */
 
         var id: String {            /* Stable identity for the active sheet                */
 
             switch self {
                 case .date(let field): "date-\(field.id)"
                 case .members:         "members"
+                case .labels:          "labels"
             }
         }
     }
@@ -149,9 +151,10 @@ struct CardDetailView: View {
     }
 
     let card: KanbanCard                                     /* The kanban card being displayed in detail                    */
+    @Binding var labelLibrary: LabelLibrary                  /* Shared label catalog available to every card                 */
     let availableLists: [KanbanList]                         /* Other lists that can receive this card                       */
-    let memberColors: [String: Color]                         /* Shared icon colors keyed by normalized member name           */
-    let currentUserName: String                               /* Current actor name shown in card activity                    */
+    let memberColors: [String: Color]                        /* Shared icon colors keyed by normalized member name           */
+    let currentUserName: String                              /* Current actor name shown in card activity                    */
     let onTitleToggle: ((KanbanCard) -> Void)?               /* Callback invoked when the card title checkbox is toggled     */
     let onMoveToList: ((Int) -> Void)?                       /* Callback invoked to move the card to a selected list         */
 
@@ -166,13 +169,14 @@ struct CardDetailView: View {
     @State private var startDate: Date?                      /* Optional start date for the selected card                    */
     @State private var dueDate: Date?                        /* Optional due date for the selected card                      */
     @State private var descriptionText: String               /* Editable description shown on this card                      */
-    @State private var activeSheet: ActiveSheet?              /* The date picker or member editor currently presented        */
+    @State private var activeSheet: ActiveSheet?             /* The date picker or member editor currently presented         */
     @State private var comments: [KanbanComment]             /* Comments saved to this card's activity                       */
     @State private var members: [String]                     /* Users assigned to the selected card                          */
+    @State private var selectedLabelIDs: [String]            /* Stable IDs of labels assigned to this card                   */
     @State private var commentDraft = ""                     /* Text currently entered in the comment composer               */
     @State private var dismissedActivityIDs: Set<String>     /* IDs of activity entries that have been dismissed by the user */
     @State private var activityFilter: ActivityFilter = .all /* The currently selected activity filter for the card          */
-    @State private var showingAttachmentNotice = false       /* Whether the attachment availability notice is presented     */
+    @State private var showingAttachmentNotice = false       /* Whether the attachment availability notice is presented      */
 
     ///
     /// @brief      Initialize the card detail state
@@ -184,17 +188,19 @@ struct CardDetailView: View {
     ///
     init(
         card: KanbanCard,
+        labelLibrary: Binding<LabelLibrary> = .constant(.starter),
         availableLists: [KanbanList]           = [],        /* Other lists available as move destinations                   */
-        memberColors: [String: Color]          = [:],       /* Shared member icon colors                                     */
+        memberColors: [String: Color]          = [:],       /* Shared member icon colors                                    */
         currentUserName: String                = "Justin Reina",
         onTitleToggle: ((KanbanCard) -> Void)? = nil,       /* Callback invoked when the card title checkbox is toggled     */
         onMoveToList: ((Int) -> Void)?         = nil        /* Callback invoked when the card is moved                      */
     ) {
 
         self.card           = card                                              /* The kanban card being displayed in detail                            */
+        self._labelLibrary  = labelLibrary                                      /* Shared catalog used by all card label assignments                    */
         self.availableLists = availableLists                                    /* Other lists available as move destinations                           */
         self.memberColors   = memberColors                                      /* Shared member icon colors                                            */
-        self.currentUserName = currentUserName                                 /* Current actor name shown in card activity                             */
+        self.currentUserName = currentUserName                                  /* Current actor name shown in card activity                            */
         self.onTitleToggle  = onTitleToggle                                     /* Callback invoked when the card title checkbox is toggled             */
         self.onMoveToList   = onMoveToList                                      /* Callback invoked when the card is moved                              */
 
@@ -205,7 +211,8 @@ struct CardDetailView: View {
         _dueDate              = State(initialValue: card.dueDate)               /* Initialize the due date from the card state                          */
         _descriptionText      = State(initialValue: card.funParagraph)          /* Initialize the editable description from the card                    */
         _comments             = State(initialValue: card.comments)              /* Initialize comments from the selected card                           */
-        _members              = State(initialValue: card.members)                /* Initialize assigned members from the selected card                  */
+        _members              = State(initialValue: card.members)               /* Initialize assigned members from the selected card                   */
+        _selectedLabelIDs     = State(initialValue: card.labelIDs)              /* Initialize selected labels from the card                             */
         _dismissedActivityIDs = State(initialValue: card.dismissedActivityIDs)  /* Initialize dismissed activity IDs from the card state                */
 
         _checklists = State(initialValue: card.checklists)                      /* Initialize checklist state from the card's stored values             */
@@ -217,6 +224,12 @@ struct CardDetailView: View {
         let normalizedName = memberName.trimmingCharacters(in: .whitespacesAndNewlines).lowercased()
 
         return memberColors[normalizedName] ?? .accentColor
+    }
+
+    private var selectedLabels: [KanbanLabel] {
+        selectedLabelIDs.compactMap { labelID in
+            labelLibrary.labels.first(where: { $0.id == labelID })
+        }
     }
 
 
@@ -234,22 +247,24 @@ struct CardDetailView: View {
     /// @post       The parent view receives the current card state for persistence
     ///
     private func syncCardState(
-        title:          String? = nil,
-        subtitle:       String? = nil,
+        title:          String?   = nil,
+        subtitle:       String?   = nil,
         members:        [String]? = nil,
-        titleChecked:   Bool? = nil,
-        startDate:      Date? = nil,
-        dueDate:        Date? = nil,
-        clearStartDate: Bool  = false,
-        clearDueDate:   Bool  = false
+        labelIDs:       [String]? = nil,
+        titleChecked:   Bool?     = nil,
+        startDate:      Date?     = nil,
+        dueDate:        Date?     = nil,
+        clearStartDate: Bool      = false,
+        clearDueDate:   Bool      = false
     ) {
 
         let nextTitleChecked = titleChecked                      ?? self.titleChecked
         let nextTitle         = title         ?? titleText
         let nextSubtitle      = subtitle      ?? (card.subtitleOverride == nil && subtitleText == card.subtitle ? nil : subtitleText)
         let nextMembers       = members       ?? self.members
-        let nextStartDate    = clearStartDate ? nil : (startDate ?? self.startDate)
-        let nextDueDate      = clearDueDate   ? nil : (dueDate   ?? self.dueDate)
+        let nextLabelIDs      = labelIDs      ?? selectedLabelIDs
+        let nextStartDate     = clearStartDate ? nil : (startDate ?? self.startDate)
+        let nextDueDate       = clearDueDate   ? nil : (dueDate   ?? self.dueDate)
 
         let updatedCard = KanbanCard(
             id:                   card.id,
@@ -262,6 +277,7 @@ struct CardDetailView: View {
             checklists:           checklists,
             comments:             comments,
             members:              nextMembers,
+            labelIDs:             nextLabelIDs,
             dismissedActivityIDs: dismissedActivityIDs,
             descriptionOverride:  descriptionText,
             subtitleOverride:     nextSubtitle
@@ -974,7 +990,32 @@ struct CardDetailView: View {
                             Divider()
                         }
 
-                        DetailRow(icon: "tag", title: "Labels", value: "Planning")
+                        Button {
+                            activeSheet = .labels
+                        } label: {
+                            HStack(spacing: 10) {
+                                Image(systemName: "tag")
+                                    .frame(width: 22)
+                                    .foregroundStyle(.secondary)
+
+                                Text("Labels")
+                                Spacer()
+
+                                if selectedLabels.isEmpty {
+                                    Text("Add labels")
+                                        .foregroundStyle(.secondary)
+                                } else {
+                                    ForEach(selectedLabels) { label in
+                                        KanbanLabelChip(label: label)
+                                    }
+                                }
+                            }
+                            .font(.subheadline)
+                            .padding(.vertical, 5)
+                            .contentShape(Rectangle())
+                        }
+                        .buttonStyle(.plain)
+                        .accessibilityLabel("Edit card labels")
 
                         Divider()
 
@@ -1233,6 +1274,15 @@ struct CardDetailView: View {
                         syncCardState(members: updatedMembers)
                     }
                     .presentationDetents([.medium, .large])
+
+                case .labels:
+                    CardLabelsSheet(library: labelLibrary, selectedLabelIDs: selectedLabelIDs) { updatedLibrary, updatedLabelIDs in
+                        labelLibrary     = updatedLibrary
+                        selectedLabelIDs = updatedLabelIDs
+
+                        syncCardState(labelIDs: updatedLabelIDs)
+                    }
+                    .presentationDetents([.large])
             }
         }
         }
@@ -1253,7 +1303,7 @@ struct CardDetailView: View {
 private struct CardMembersSheet: View {
 
     let onSave: ([String]) -> Void                  /* Callback to be invoked when the list of members is saved    */
-    let memberColors: [String: Color]               /* Shared icon colors keyed by normalized member name         */
+    let memberColors: [String: Color]               /* Shared icon colors keyed by normalized member name          */
 
     @Environment(\.dismiss) private var dismiss     /* Dismiss action for the sheet                                */
     @State private var members: [String]            /* Local copy of the members list for editing within the sheet */

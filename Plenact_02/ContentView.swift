@@ -26,7 +26,8 @@ struct BoardDisplaySettings {
 ///
 struct ContentView: View {
 
-    @State private var lists: [KanbanList]           = SampleData.lists         /* Kanban board lists                               */
+    @State private var lists: [KanbanList]           = KanbanBoardPersistence.loadLists() /* Kanban board lists                     */
+    @State private var labelLibrary                  = LabelLibraryStore.load() /* Label library containing all available labels    */
     @State private var displaySettings               = BoardDisplaySettings()   /* Board display settings                           */
     @State private var memberColors: [String: Color] = [:]                      /* Mapping of member names to their assigned colors */
     @State private var currentUserName               = "Justin Reina"           /* Current user's name                              */
@@ -331,6 +332,7 @@ struct ContentView: View {
                 checklists:           card.checklists,
                 comments:             card.comments,
                 members:              card.members,
+                labelIDs:             card.labelIDs,
                 dismissedActivityIDs: card.dismissedActivityIDs,
                 descriptionOverride:  card.descriptionOverride,
                 subtitleOverride:     card.subtitleOverride
@@ -597,9 +599,10 @@ struct ContentView: View {
                                 ForEach(Array(lists.enumerated()), id: \.element.id) { listIndex, list in
 
                                     KanbanListView(
-                                        list: list,
-                                        screenSize: screen.size,
+                                        list:            list,
+                                        screenSize:      screen.size,
                                         displaySettings: displaySettings,
+                                        labelLibrary:    labelLibrary,
                                         toggleCardTitle: { cardID in
                                             toggleCardTitle(in: listIndex, cardID: cardID)
                                         },
@@ -635,7 +638,8 @@ struct ContentView: View {
             .toolbar(.hidden, for: .navigationBar)
             .navigationDestination(for: KanbanCard.self) { card in
                 CardDetailView(
-                    card: card,
+                    card:           card,
+                    labelLibrary:   $labelLibrary,
                     availableLists: lists.filter { list in
                         !list.cards.contains(where: { $0.id == card.id })
                     },
@@ -648,6 +652,12 @@ struct ContentView: View {
                         moveCard(card.id, toListID: destinationListID)
                     }
                 )
+            }
+            .onChange(of: lists) { _, updatedLists in
+                KanbanBoardPersistence.saveLists(updatedLists)
+            }
+            .onChange(of: labelLibrary) { _, updatedLibrary in
+                LabelLibraryStore.save(updatedLibrary)
             }
         }
     }
@@ -951,6 +961,7 @@ struct KanbanListView: View {
     let list: KanbanList                        /* The kanban list data rendered by the view                      */
     let screenSize: CGSize                      /* The size of the device screen used for layout calculations     */    
     let displaySettings: BoardDisplaySettings   /* The board's display settings affecting card and list rendering */
+    let labelLibrary: LabelLibrary              /* Shared categorized labels available to the cards               */
     let toggleCardTitle: (Int) -> Void          /* The action invoked to toggle the title of a card               */
     let canMoveEarlier: Bool                    /* Indicates whether the list can be moved earlier in the board   */
     let canMoveLater:  Bool                     /* Indicates whether the list can be moved later in the board     */
@@ -1065,11 +1076,12 @@ struct KanbanListView: View {
                         NavigationLink(value: card) {
 
                             KanbanCardView(
-                                card: card,
-                                height: cardHeight,
+                                card:            card,
+                                height:          cardHeight,
                                 displaySettings: displaySettings,
-                                onUpdateCard: onUpdateCard,
-                                onDeleteCard: { onDeleteCard(card.id) }
+                                labelLibrary:    labelLibrary,
+                                onUpdateCard:    onUpdateCard,
+                                onDeleteCard:    { onDeleteCard(card.id) }
                             ) {
                                 toggleCardTitle(card.id)
                             }
@@ -1428,6 +1440,7 @@ struct KanbanCardView: View {
     let card: KanbanCard                            /* The kanban card being displayed                               */
     let height: CGFloat                             /* The fixed height of the card view                             */
     let displaySettings: BoardDisplaySettings       /* Settings controlling which elements of the card are displayed */
+    let labelLibrary: LabelLibrary                  /* Shared label catalog used to resolve card label IDs           */
     let onUpdateCard: (KanbanCard) -> Void          /* The action invoked when card details are updated              */
     let onDeleteCard: () -> Void                    /* The action invoked when this card is deleted                  */
     let onToggle: () -> Void                        /* Callback invoked when the card's title checkbox is toggled    */
@@ -1440,6 +1453,12 @@ struct KanbanCardView: View {
 
     private var trimmedRenameDraft: String {
         renameDraft.trimmingCharacters(in: .whitespacesAndNewlines)
+    }
+
+    private var cardLabels: [KanbanLabel] {
+        card.labelIDs.compactMap { labelID in
+            labelLibrary.labels.first(where: { $0.id == labelID })
+        }
     }
 
 
@@ -1469,6 +1488,7 @@ struct KanbanCardView: View {
             checklists:           card.checklists,
             comments:             card.comments,
             members:              card.members,
+            labelIDs:             card.labelIDs,
             dismissedActivityIDs: card.dismissedActivityIDs,
             descriptionOverride:  description,
             subtitleOverride:     subtitle
@@ -1554,6 +1574,20 @@ struct KanbanCardView: View {
                 .foregroundStyle(.secondary)
                 .lineLimit(1)
                 .truncationMode(.tail)
+
+            if !cardLabels.isEmpty {
+                HStack(spacing: 5) {
+                    ForEach(cardLabels.prefix(3)) { label in
+                        KanbanLabelChip(label: label)
+                    }
+
+                    if cardLabels.count > 3 {
+                        Text("+\(cardLabels.count - 3)")
+                            .font(.caption2.weight(.medium))
+                            .foregroundStyle(.secondary)
+                    }
+                }
+            }
 
             HStack(spacing: 14) {
 
