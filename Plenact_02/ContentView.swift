@@ -9,6 +9,13 @@
 import SwiftUI
 
 
+struct BoardDisplaySettings {
+    var showChecklistProgress = true    /* Display checklist progress on cards */
+    var showCommentCounts     = true    /* Display comment counts on cards     */
+    var showDueDateBadges     = true    /* Display due date badges on cards    */
+}
+
+
 // -------------------------------------- MARK: - Board View ------------------------------------ //
 
 ///
@@ -20,6 +27,32 @@ import SwiftUI
 struct ContentView: View {
 
     @State private var lists: [KanbanList] = SampleData.lists
+    @State private var displaySettings     = BoardDisplaySettings()
+
+    ///
+    /// @fcn        ContentView.addList
+    /// @brief      Append a new empty list to the board
+    /// @details    Assigns the next available list identifier and generates a title that does not duplicate an existing list name
+    ///
+    /// @return     (Void) updates the board's in-memory list collection
+    ///
+    /// @pre        The board list collection has been initialized
+    /// @post       A uniquely identified empty list is appended to the board
+    ///
+    private func addList() {
+        let nextListID     = (lists.map(\.id).max() ?? -1) + 1
+        let existingTitles = Set(lists.map { $0.title.lowercased() })
+        var newTitle       = "New List"
+        var suffix         = 2
+
+        while existingTitles.contains(newTitle.lowercased()) {
+            newTitle = "New List \(suffix)"
+            suffix  += 1
+        }
+
+        lists.append(KanbanList(id: nextListID, title: newTitle, cards: []))
+    }
+
 
     ///
     /// @fcn        ContentView.addCard(to:)
@@ -259,7 +292,7 @@ struct ContentView: View {
                     .ignoresSafeArea()
 
                     VStack(spacing: 0) {
-                        BoardHeader()
+                        BoardHeader(settings: $displaySettings, onAddList: addList)
 
                         ScrollView(.horizontal, showsIndicators: false) {
                             HStack(spacing: 12) {
@@ -267,6 +300,7 @@ struct ContentView: View {
                                     KanbanListView(
                                         list: list,
                                         screenSize: screen.size,
+                                        displaySettings: displaySettings,
                                         toggleCardTitle: { cardID in
                                             toggleCardTitle(in: listIndex, cardID: cardID)
                                         },
@@ -310,6 +344,12 @@ struct ContentView: View {
 ///
 struct BoardHeader: View {
 
+    @Binding var settings: BoardDisplaySettings     /* Board display settings                              */
+
+    let onAddList: () -> Void                       /* Callback for adding a new list                      */
+
+    @State private var showingSettings = false      /* Controls the visibility of the board settings sheet */
+
     /// Builds the title block and board action controls.
     var body: some View {
         HStack {
@@ -326,16 +366,18 @@ struct BoardHeader: View {
 
             Spacer()
 
-            Button(action: {}) {
-
+            Menu {
+                Button("Add blank list", systemImage: "rectangle.stack.badge.plus", action: onAddList)
+            } label: {
                 Image(systemName: "plus.circle.fill")
                     .font(.title2)
                     .foregroundStyle(.white)
             }
             .accessibilityLabel("Add list")
 
-            Button(action: {}) {
-
+            Button {
+                showingSettings = true
+            } label: {
                 Image(systemName: "ellipsis.circle.fill")
                     .font(.title2)
                     .foregroundStyle(.white)
@@ -345,6 +387,57 @@ struct BoardHeader: View {
         .padding(.horizontal, 18)
         .padding(.top, 12)
         .padding(.bottom, 10)
+        .sheet(isPresented: $showingSettings) {
+            BoardSettingsView(settings: $settings)
+        }
+    }
+}
+
+
+/// Presents board-level display preferences in a dismissible settings sheet.
+///
+/// @section    Purpose
+///     Let the user control which metadata badges appear on board cards
+///
+/// @note   Settings are bound to ContentView and take effect immediately
+///
+private struct BoardSettingsView: View {
+
+    @Binding var settings: BoardDisplaySettings     /* Bound to the board's display preferences */
+    @Environment(\.dismiss) private var dismiss     /* Dismiss action for the settings sheet    */
+
+    ///
+    /// @fcn        BoardSettingsView.body
+    /// @brief      Build the board settings form
+    /// @details    Presents toggles for checklist progress, comment counts, and due-date badges
+    ///
+    /// @return     (some View) settings sheet content with a Done action
+    ///
+    /// @pre        settings is bound to the board's display preferences
+    /// @post       Changes update the bound settings and are reflected by the board cards
+    ///
+    var body: some View {
+
+        NavigationStack {
+            Form {
+                Section("Card badges") {
+                    Toggle("Checklist progress", isOn: $settings.showChecklistProgress)
+                    Toggle("Comment counts",     isOn: $settings.showCommentCounts)
+                    Toggle("Due-date badges",    isOn: $settings.showDueDateBadges)
+                }
+            }
+            .navigationTitle("Board Settings")
+            .navigationBarTitleDisplayMode(.inline)
+            .toolbar {
+                ToolbarItem(placement: .topBarTrailing) {
+                    Button("Done") {
+                        dismiss()
+                    }
+                }
+            }
+        }
+        .presentationDetents([.medium, .large])
+        .presentationDragIndicator(.visible)
     }
 }
 
@@ -361,9 +454,10 @@ struct KanbanListView: View {
 
     let list: KanbanList
     let screenSize: CGSize
+    let displaySettings: BoardDisplaySettings
     let toggleCardTitle: (Int) -> Void
     let canMoveEarlier: Bool
-    let canMoveLater: Bool
+    let canMoveLater:  Bool
     let onAddCard: () -> Void
     let onCopyList: () -> Void
     let onMoveList: (Int) -> Void
@@ -424,7 +518,7 @@ struct KanbanListView: View {
                 VStack(spacing: 8) {
                     ForEach(list.cards) { card in
                         NavigationLink(value: card) {
-                            KanbanCardView(card: card, height: cardHeight) {
+                            KanbanCardView(card: card, height: cardHeight, displaySettings: displaySettings) {
                                 toggleCardTitle(card.id)
                             }
                         }
@@ -632,6 +726,7 @@ struct KanbanCardView: View {
 
     let card: KanbanCard
     let height: CGFloat
+    let displaySettings: BoardDisplaySettings
     let onToggle: () -> Void
 
     /// Builds a fixed-height card summary within its parent list.
@@ -662,10 +757,15 @@ struct KanbanCardView: View {
 
             HStack(spacing: 14) {
 
-                Label("\(card.commentCount)", systemImage: "text.bubble")
-                Label("\(card.completedChecklistItems)/\(card.checklistItems.count)", systemImage: "checklist")
+                if displaySettings.showCommentCounts {
+                    Label("\(card.commentCount)", systemImage: "text.bubble")
+                }
 
-                if card.hasDueDate {
+                if displaySettings.showChecklistProgress {
+                    Label("\(card.completedChecklistItems)/\(card.checklistItems.count)", systemImage: "checklist")
+                }
+
+                if displaySettings.showDueDateBadges && card.hasDueDate {
                     Label("Today", systemImage: "calendar")
                 }
 
