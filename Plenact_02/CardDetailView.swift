@@ -172,6 +172,7 @@ struct CardDetailView: View {
     @State private var commentDraft = ""                     /* Text currently entered in the comment composer               */
     @State private var dismissedActivityIDs: Set<String>     /* IDs of activity entries that have been dismissed by the user */
     @State private var activityFilter: ActivityFilter = .all /* The currently selected activity filter for the card          */
+    @State private var showingAttachmentNotice = false       /* Whether the attachment availability notice is presented     */
 
     ///
     /// @brief      Initialize the card detail state
@@ -911,7 +912,7 @@ struct CardDetailView: View {
                         LazyVGrid(columns: [GridItem(.flexible()), GridItem(.flexible())], spacing: 8) {
 
                             ActionTile(title: "Add Checklist",  icon: "checklist", color: .green,  action: { addChecklist(using: scrollProxy) })
-                            ActionTile(title: "Add Attachment", icon: "paperclip", color: .cyan,   action: {})
+                            ActionTile(title: "Add Attachment", icon: "paperclip", color: .cyan,   action: { showingAttachmentNotice = true })
                             ActionTile(title: "Members",        icon: "person.2",  color: .purple, action: { activeSheet = .members })
                         }
                     }
@@ -1179,6 +1180,11 @@ struct CardDetailView: View {
         .navigationTitle("")
         .navigationBarTitleDisplayMode(.inline)
         .navigationBarBackButtonHidden(true)
+        .alert("Attachments coming soon", isPresented: $showingAttachmentNotice) {
+            Button("Ok", role: .cancel) {}
+        } message: {
+            Text("Adding attachments to cards isn't ready yet, but it's on the way")
+        }
         .sheet(item: $activeSheet) { sheet in
             switch sheet {
                 case .date(let field):
