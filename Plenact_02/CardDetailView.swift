@@ -30,8 +30,8 @@ struct CardDetailView: View {
 
         var title: String {
             switch self {
-            case .start: return "Start date"
-            case .due:   return "Due date"
+                case .start: return "Start date"
+                case .due:   return "Due date"
             }
         }
     }
@@ -42,9 +42,9 @@ struct CardDetailView: View {
     ///     Keep generated activity text identifiable so a user's deletion remains associated with the card
     ///
     private enum GeneratedActivity: String, CaseIterable, Identifiable {
-        case addedCard
-        case createdCard
-        case initialComment
+        case addedCard          /* Card was added to the board           */
+        case createdCard        /* Card was created on the board         */
+        case initialComment     /* Initial comment was added to the card */
 
         var id: String { rawValue }
 
@@ -104,9 +104,9 @@ struct CardDetailView: View {
     let card: KanbanCard                                     /* The kanban card being displayed in detail                    */
     let onTitleToggle: ((KanbanCard) -> Void)?               /* Callback invoked when the card title checkbox is toggled     */
 
-
     @Environment(\.dismiss) private var dismiss              /* Dismiss action for the card detail view                      */
     @FocusState private var focusedField: EditableField?     /* current focused editable field within the card detail view   */
+
     @State private var checklists: [KanbanChecklist]         /* The checklist groups associated with the selected card       */
     @State private var titleChecked: Bool                    /* Whether the card title itself is checked                     */
     @State private var startDate: Date?                      /* Optional start date for the selected card                    */
@@ -258,13 +258,14 @@ struct CardDetailView: View {
     /// @param[in]  field  The date field to reset
     ///
     private func resetDate(for field: DateField) {
+
         switch field {
-        case .start:
-            startDate = nil
-            syncCardState(clearStartDate: true)
-        case .due:
-            dueDate = nil
-            syncCardState(clearDueDate: true)
+            case .start:
+                startDate = nil
+                syncCardState(clearStartDate: true)
+            case .due:
+                dueDate = nil
+                syncCardState(clearDueDate: true)
         }
 
         activeDatePicker = nil
@@ -470,6 +471,7 @@ struct CardDetailView: View {
 
         // Recalculate the set of completed item indices after the deletion
         let completedItemIndices: Set<Int> = Set(
+
             checklist.completedItemIndices.compactMap { (index: Int) -> Int? in
 
                 // Skip the index if it matches the deleted item index
@@ -519,8 +521,10 @@ struct CardDetailView: View {
                         .accessibilityLabel(titleChecked ? "Uncheck card title" : "Check card title")
 
                         VStack(alignment: .leading, spacing: 5) {
+
                             Text(card.word.capitalized)
                                 .font(.title2.weight(.bold))
+
                             Text("In list \(card.listTitle)")
                                 .font(.subheadline)
                                 .foregroundStyle(.secondary)
@@ -529,6 +533,7 @@ struct CardDetailView: View {
                         Spacer()
 
                         HStack(spacing: 16) {
+
                             Menu {
                                 Button(action: addChecklist) {
                                     Label("Add checklist", systemImage: "checklist")
@@ -622,12 +627,16 @@ struct CardDetailView: View {
                     //          Presents the selected card's dates, labels, and member metadata in aligned rows      //
                     //***********************************************************************************************//
                     DetailSection(title: "Details") {
+
                         HStack(alignment: .center) {
                             Image(systemName: "calendar")
                                 .foregroundStyle(.secondary)
+
                             Text("Start date")
+                            
                                 .font(.body)
                             Spacer()
+
                             Button {
                                 activeDatePicker = .start
                             } label: {
@@ -636,13 +645,19 @@ struct CardDetailView: View {
                             .buttonStyle(.plain)
                             .accessibilityLabel("Edit start date")
                         }
+
                         Divider()
+
                         HStack(alignment: .center) {
+
                             Image(systemName: "calendar.badge.clock")
                                 .foregroundStyle(.secondary)
+
                             Text("Due date")
                                 .font(.body)
+
                             Spacer()
+
                             Button {
                                 activeDatePicker = .due
                             } label: {
@@ -651,9 +666,13 @@ struct CardDetailView: View {
                             .buttonStyle(.plain)
                             .accessibilityLabel("Edit due date")
                         }
+
                         Divider()
+
                         DetailRow(icon: "tag", title: "Labels", value: "Planning")
+
                         Divider()
+
                         DetailRow(icon: "person", title: "Members", value: "Justin Reina")
                     }
 
@@ -700,10 +719,14 @@ struct CardDetailView: View {
                     //          Presents the recent events associated with the selected card                         //
                     //***********************************************************************************************//
                     VStack(alignment: .leading, spacing: 10) {
+
                         HStack {
+
                             Text("Activity")
                                 .font(.headline)
+
                             Spacer()
+
                             Menu {
                                 Picker("Show", selection: $activityFilter) {
                                     ForEach(ActivityFilter.allCases) { filter in
@@ -846,7 +869,7 @@ struct DetailSection<Content: View>: View {
 
         self.title          = title          /* The title of the detail section                    */
         self.trailing       = trailing       /* The optional trailing symbol of the detail section */
-        self.trailingAction = trailingAction /* The optional action for the trailing symbol       */
+        self.trailingAction = trailingAction /* The optional action for the trailing symbol        */
         self.content        = content        /* The content of the detail section                  */
     }
 
@@ -909,10 +932,10 @@ struct DetailSection<Content: View>: View {
 ///
 struct ActionTile: View {
 
-    let title: String   /* The title of the action tile          */
-    let icon:  String   /* The icon representing the action tile */
-    let color: Color    /* The color of the action tile          */
-    let action: () -> Void
+    let title: String       /* The title of the action tile                  */
+    let icon:  String       /* The icon representing the action tile         */
+    let color: Color        /* The color of the action tile                  */
+    let action: () -> Void  /* The action to perform when the tile is tapped */
 
     ///
     /// @brief      Build the compact action tile
@@ -960,11 +983,15 @@ struct DetailRow: View {
     var body: some View {
 
         HStack(spacing: 12) {
+
             Image(systemName: icon)
                 .frame(width: 22)
                 .foregroundStyle(.secondary)
+
             Text(title)
+
             Spacer()
+
             Text(value)
                 .foregroundStyle(.secondary)
         }
@@ -986,12 +1013,12 @@ struct DetailRow: View {
 ///
 struct ChecklistBlock: View {
 
-    let checklist: KanbanChecklist   /* The checklist data rendered by the block           */
-    let onDelete: () -> Void         /* The action invoked when the checklist is deleted   */
-    let onAddItem: () -> Void        /* The action invoked when a new item is added        */
-    let onToggleItem: (Int) -> Void  /* The action invoked when an item is toggled         */
-    let onUpdateItem: (Int, String) -> Void /* The action invoked when item text is edited */
-    let onDeleteItem: (Int) -> Void  /* The action invoked when an item is deleted         */
+    let checklist: KanbanChecklist          /* The checklist data rendered by the block           */
+    let onDelete: () -> Void                /* The action invoked when the checklist is deleted   */
+    let onAddItem: () -> Void               /* The action invoked when a new item is added        */
+    let onToggleItem: (Int) -> Void         /* The action invoked when an item is toggled         */
+    let onUpdateItem: (Int, String) -> Void /* The action invoked when item text is edited        */
+    let onDeleteItem: (Int) -> Void         /* The action invoked when an item is deleted         */
 
 
     ///
@@ -1003,13 +1030,18 @@ struct ChecklistBlock: View {
     var body: some View {
 
         VStack(alignment: .leading, spacing: 0) {
+
             HStack {
+
                 Text(checklist.title)
                     .font(.subheadline.weight(.semibold))
+
                 Spacer()
+
                 Text("\(checklist.completed)/\(checklist.items.count)")
                     .font(.caption)
                     .foregroundStyle(.secondary)
+
                 Button(action: onDelete) {
                     Image(systemName: "ellipsis")
                         .foregroundStyle(.secondary)
@@ -1020,15 +1052,19 @@ struct ChecklistBlock: View {
             .padding(.bottom, 6)
 
             ForEach(Array(checklist.items.enumerated()), id: \.offset) { index, item in
+
                 ChecklistItemRow(
                     item: item,
                     isCompleted: checklist.completedItemIndices.contains(index),
+
                     onToggle: {
                         onToggleItem(index)
                     },
+
                     onUpdate: { text in
                         onUpdateItem(index, text)
                     },
+
                     onDelete: {
                         onDeleteItem(index)
                     }
@@ -1036,6 +1072,7 @@ struct ChecklistBlock: View {
             }
 
             Button(action: onAddItem) {
+
                 Text("Add item...")
                     .font(.subheadline)
                     .foregroundStyle(.secondary)
@@ -1071,7 +1108,9 @@ struct ChecklistItemRow: View {
     var body: some View {
 
         ZStack(alignment: .trailing) {
+
             Button(role: .destructive, action: onDelete) {
+
                 Image(systemName: "trash")
                     .foregroundStyle(.white)
                     .frame(width: 72)
@@ -1082,7 +1121,9 @@ struct ChecklistItemRow: View {
             .accessibilityLabel("Delete item")
 
             HStack(spacing: 10) {
+
                 Button(action: onToggle) {
+
                     Image(systemName: isCompleted ? "checkmark.square.fill" : "square")
                         .foregroundStyle(isCompleted ? .blue : .secondary)
                 }
@@ -1102,6 +1143,7 @@ struct ChecklistItemRow: View {
             .background(.background)
             .offset(x: horizontalOffset)
             .simultaneousGesture(
+
                 DragGesture(minimumDistance: 12)
                     .onChanged { value in
                         guard abs(value.translation.width) > abs(value.translation.height) else {
@@ -1153,12 +1195,17 @@ struct ActivityRow: View {
     var body: some View {
 
         ActivitySwipeRow(onDelete: onDelete) {
+
             HStack(alignment: .top, spacing: 10) {
+
                 Image(systemName: "person.crop.circle.fill")
                     .foregroundStyle(.teal)
+
                 VStack(alignment: .leading, spacing: 3) {
+
                     Text(text)
                         .font(.subheadline)
+
                     Text("Today at 7:00 AM")
                         .font(.caption)
                         .foregroundStyle(.secondary)
@@ -1169,20 +1216,25 @@ struct ActivityRow: View {
 }
 
 
-/// Renders a posted card comment and its authoring time in the activity feed.
+/// Renders a posted card comment and its authoring time in the activity feed
 struct CommentActivityRow: View {
 
-    let comment: KanbanComment
-    let onDelete: () -> Void
+    let comment: KanbanComment      /* The comment data rendered by the row           */
+    let onDelete: () -> Void        /* The action invoked when the comment is deleted */
 
     var body: some View {
         ActivitySwipeRow(onDelete: onDelete) {
+
             HStack(alignment: .top, spacing: 10) {
+
                 Image(systemName: "person.crop.circle.fill")
                     .foregroundStyle(.teal)
+
                 VStack(alignment: .leading, spacing: 3) {
+
                     (Text(comment.author).fontWeight(.semibold) + Text(" ") + Text(comment.body))
                         .font(.subheadline)
+
                     Text(comment.createdAt.formatted(date: .abbreviated, time: .shortened))
                         .font(.caption)
                         .foregroundStyle(.secondary)
@@ -1203,13 +1255,16 @@ struct CommentActivityRow: View {
 ///
     struct ActivitySwipeRow<Content: View>: View {
 
-        let onDelete: () -> Void
-        @ViewBuilder let content: () -> Content
-        @State private var horizontalOffset: CGFloat = 0
+        let onDelete: () -> Void                            /* The action invoked when the row is deleted     */
+        @ViewBuilder let content: () -> Content             /* The content view rendered inside the swipe row */
+        @State private var horizontalOffset: CGFloat = 0    /* The current horizontal offset of the swipe row */
 
         var body: some View {
+
             ZStack(alignment: .trailing) {
+
                 Button(role: .destructive, action: onDelete) {
+
                     Image(systemName: "trash")
                         .foregroundStyle(.white)
                         .frame(width: 72)
@@ -1226,6 +1281,7 @@ struct CommentActivityRow: View {
                     .background(.background)
                     .offset(x: horizontalOffset)
                     .simultaneousGesture(
+
                         DragGesture(minimumDistance: 12)
                             .onChanged { value in
                                 guard abs(value.translation.width) > abs(value.translation.height) else {
@@ -1233,6 +1289,7 @@ struct CommentActivityRow: View {
                                 }
                                 horizontalOffset = min(0, max(-72, value.translation.width))
                             }
+
                             .onEnded { value in
                                 guard abs(value.translation.width) > abs(value.translation.height) else {
                                     return
@@ -1251,7 +1308,20 @@ struct CommentActivityRow: View {
         }
     }
 
+    
+// -------------------------------------- MARK: - Card Detail Preview ------------------------- //
 
+    ///
+    /// @fcn        CardDetailView.Preview
+    /// @brief      Render a representative card detail screen in the Xcode canvas
+    /// @details    Wraps the first deterministic sample card in a NavigationStack so navigation-dependent
+    ///             presentation, including the detail navigation bar and sheets, has its required context
+    ///
+    /// @return     (some View) navigable card detail preview
+    ///
+    /// @pre        SampleData contains at least one list with one card
+    /// @post       Preview rendering does not mutate the production board state
+    ///
     #Preview {
     NavigationStack {
         CardDetailView(card: SampleData.lists[0].cards[0])

@@ -69,7 +69,7 @@ struct ContentView: View {
     /// @post       The new card appears as the last card in the selected list
     ///
     private func addCard(to listID: Int, title: String, description: String) {
-        
+
         guard let listIndex = lists.firstIndex(where: { $0.id == listID }) else { return }
 
         let nextCardID  = (lists.flatMap { $0.cards.map(\.id) }.max() ?? -1) + 1
@@ -179,7 +179,9 @@ struct ContentView: View {
         var updatedList = lists[listIndex]
 
         updatedList.cards.sort {
+
             let comparison = $0.word.localizedStandardCompare($1.word)
+
             return ascending ? comparison == .orderedAscending : comparison == .orderedDescending
         }
 
@@ -246,7 +248,7 @@ struct ContentView: View {
 
         guard let cardIndex = updatedList.cards.firstIndex(where: { $0.id == cardID }) else { return }
 
-        var updatedCard = updatedList.cards[cardIndex]
+        var updatedCard     = updatedList.cards[cardIndex]
 
         updatedCard.isTitleChecked.toggle()
 
@@ -288,8 +290,11 @@ struct ContentView: View {
 
     /// Builds the board scene and its horizontally scrollable list collection.
     var body: some View {
+
         NavigationStack {
+            
             GeometryReader { screen in
+
                 ZStack {
                     LinearGradient(
                         colors: [Color(red: 0.10, green: 0.18, blue: 0.25), Color(red: 0.22, green: 0.34, blue: 0.38)],
