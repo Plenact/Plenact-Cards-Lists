@@ -24,6 +24,7 @@ struct KanbanCard: Identifiable, Hashable {
     let id:             Int                 /* Stable numeric identifier for the card             */
     let word:           String              /* Display word shown as the card's title             */
     let listTitle:      String              /* Name of the list where the card resides            */
+    var isDivider:      Bool                /* Whether this item is a movable section divider     */
     var isTitleChecked: Bool                /* Whether the card's main title checkbox is selected */
     var startDate:      Date?               /* Optional start date for the card                   */
     var dueDate:        Date?               /* Optional due date for the card                     */
@@ -32,6 +33,26 @@ struct KanbanCard: Identifiable, Hashable {
     var dismissedActivityIDs: Set<String>   /* Generated activity entries removed by the user     */
     var descriptionOverride: String?        /* Optional user-edited description                   */
     var subtitleOverride: String?           /* Optional user-edited board subtitle                */
+
+    /// Indicates whether this item should render and behave as a section divider.
+    var isSectionDivider: Bool {
+        isDivider || Self.isDividerTitle(word)
+    }
+
+    /// Recognizes the ASCII marker and dash characters substituted by iOS smart punctuation.
+    static func isDividerTitle(_ title: String) -> Bool {
+
+        let trimmedTitle   = title.trimmingCharacters(in: .whitespacesAndNewlines)
+        let dashCharacters = CharacterSet(charactersIn: "-‐‑‒–—―−")
+
+        guard !trimmedTitle.isEmpty,
+              trimmedTitle.unicodeScalars.allSatisfy({ dashCharacters.contains($0) }) else {
+                
+            return false
+        }
+
+        return trimmedTitle.unicodeScalars.count >= 2 || trimmedTitle.contains("–") || trimmedTitle.contains("—") || trimmedTitle.contains("―")
+    }
 
 
     ///
@@ -43,6 +64,7 @@ struct KanbanCard: Identifiable, Hashable {
     /// @param[in]  id                    Stable numeric identifier for the card
     /// @param[in]  word                  Display word shown as the card's title
     /// @param[in]  listTitle             Name of the list where the card resides
+    /// @param[in]  isDivider             Whether this item is a section divider
     /// @param[in]  isTitleChecked        Whether the card's main title checkbox is selected
     /// @param[in]  startDate             Optional start date for the card
     /// @param[in]  dueDate               Optional due date for the card
@@ -53,11 +75,12 @@ struct KanbanCard: Identifiable, Hashable {
     /// @pre        All values should be valid for the board's deterministic sample data
     /// @post       The card contains the provided identity, title text, and checked state
     ///
-    init(id: Int, word: String, listTitle: String, isTitleChecked: Bool = false, startDate: Date? = nil, dueDate: Date? = nil, checklists: [KanbanChecklist]? = nil, comments: [KanbanComment] = [], dismissedActivityIDs: Set<String> = [], descriptionOverride: String? = nil, subtitleOverride: String? = nil) {
+    init(id: Int, word: String, listTitle: String, isDivider: Bool = false, isTitleChecked: Bool = false, startDate: Date? = nil, dueDate: Date? = nil, checklists: [KanbanChecklist]? = nil, comments: [KanbanComment] = [], dismissedActivityIDs: Set<String> = [], descriptionOverride: String? = nil, subtitleOverride: String? = nil) {
 
         self.id             = id                /* Stable numeric identifier for the card             */
         self.word           = word              /* Display word shown as the card's title             */
         self.listTitle      = listTitle         /* Name of the list where the card resides            */
+        self.isDivider      = isDivider         /* Whether this item renders as a section divider     */
         self.isTitleChecked = isTitleChecked    /* Whether the card's main title checkbox is selected */
         self.startDate      = startDate         /* Optional start date for the card                   */
         self.dueDate        = dueDate           /* Optional due date for the card                     */

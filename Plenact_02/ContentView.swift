@@ -97,11 +97,13 @@ struct ContentView: View {
         let nextCardID  = (lists.flatMap { $0.cards.map(\.id) }.max() ?? -1) + 1
         var updatedList = lists[listIndex]
 
+        /// Append the new card to the list's cards array
         updatedList.cards.append(
             KanbanCard(
                 id:                  nextCardID,
                 word:                title,
                 listTitle:           updatedList.title,
+                isDivider:           KanbanCard.isDividerTitle(title),
                 descriptionOverride: description
             )
         )
@@ -190,6 +192,7 @@ struct ContentView: View {
                 id:                   nextCardID,
                 word:                 card.word,
                 listTitle:            copiedTitle,
+                isDivider:            card.isSectionDivider,
                 isTitleChecked:       card.isTitleChecked,
                 startDate:            card.startDate,
                 dueDate:              card.dueDate,
@@ -255,13 +258,32 @@ struct ContentView: View {
 
         var updatedList = lists[listIndex]
 
-        updatedList.cards.sort {
+        var sortedCards:    [KanbanCard] = []
+        var currentSection: [KanbanCard] = []
+
+        for card in updatedList.cards {
+            guard card.isSectionDivider else {
+                currentSection.append(card)
+                continue
+            }
+
+            sortedCards.append(contentsOf: currentSection.sorted {
+                let comparison = $0.word.localizedStandardCompare($1.word)
+                return ascending ? comparison == .orderedAscending : comparison == .orderedDescending
+            })
+            currentSection.removeAll()
+            sortedCards.append(card)
+        }
+
+        sortedCards.append(contentsOf: currentSection.sorted {
 
             let comparison = $0.word.localizedStandardCompare($1.word)
 
             return ascending ? comparison == .orderedAscending : comparison == .orderedDescending
-        }
+        })
 
+        updatedList.cards = sortedCards
+        
         lists[listIndex] = updatedList
     }
 
@@ -282,7 +304,7 @@ struct ContentView: View {
 
         guard let listIndex = lists.firstIndex(where: { $0.id == listID }) else { return }
 
-        lists[listIndex].cards.removeAll(where: \.isTitleChecked)
+        lists[listIndex].cards.removeAll { !$0.isSectionDivider && $0.isTitleChecked }
     }
 
 
@@ -628,7 +650,7 @@ struct KanbanListView: View {
                         .foregroundStyle(.secondary)
                 }
 
-                Text("\(list.cards.count)")
+                Text("\(list.cards.filter { !$0.isSectionDivider }.count)")
                     .font(.subheadline.weight(.semibold))
                     .foregroundStyle(.secondary)
 
@@ -650,26 +672,39 @@ struct KanbanListView: View {
 
             List {
                 ForEach(list.cards) { card in
-                    NavigationLink(value: card) {
-                        KanbanCardView(
-                            card: card,
-                            height: cardHeight,
-                            displaySettings: displaySettings,
-                            onUpdateCard: onUpdateCard,
-                            onDeleteCard: { onDeleteCard(card.id) }
-                        ) {
-                            toggleCardTitle(card.id)
+                    if card.isSectionDivider {
+                        Rectangle()
+                            .fill(Color.secondary.opacity(0.45))
+                            .frame(height: 2)
+                            .padding(.horizontal, 12)
+                            .padding(.vertical, 12)
+                            .frame(maxWidth: .infinity)
+                            .accessibilityLabel("Section divider")
+                            .listRowInsets(EdgeInsets(top: 4, leading: 4, bottom: 4, trailing: 4))
+                            .listRowSeparator(.hidden)
+                            .listRowBackground(Color.clear)
+                    } else {
+                        NavigationLink(value: card) {
+                            KanbanCardView(
+                                card: card,
+                                height: cardHeight,
+                                displaySettings: displaySettings,
+                                onUpdateCard: onUpdateCard,
+                                onDeleteCard: { onDeleteCard(card.id) }
+                            ) {
+                                toggleCardTitle(card.id)
+                            }
                         }
-                    }
-                    .buttonStyle(.plain)
-                    .listRowInsets(EdgeInsets(top: 4, leading: 4, bottom: 4, trailing: 4))
-                    .listRowSeparator(.hidden)
-                    .listRowBackground(Color.clear)
-                    .swipeActions(edge: .trailing, allowsFullSwipe: true) {
-                        Button(role: .destructive) {
-                            onDeleteCard(card.id)
-                        } label: {
-                            Label("Delete", systemImage: "trash")
+                        .buttonStyle(.plain)
+                        .listRowInsets(EdgeInsets(top: 4, leading: 4, bottom: 4, trailing: 4))
+                        .listRowSeparator(.hidden)
+                        .listRowBackground(Color.clear)
+                        .swipeActions(edge: .trailing, allowsFullSwipe: true) {
+                            Button(role: .destructive) {
+                                onDeleteCard(card.id)
+                            } label: {
+                                Label("Delete", systemImage: "trash")
+                            }
                         }
                     }
                 }
@@ -747,7 +782,7 @@ private struct NewKanbanCardSheet: View {
         NavigationStack {
             Form {
                 Section("Card details") {
-                    TextField("Title", text: $title)
+                    TextField("Title (or --- for divider)", text: $title)
                     TextField("Description", text: $description, axis: .vertical)
                         .lineLimit(3...8)
                 }
@@ -775,6 +810,16 @@ private struct NewKanbanCardSheet: View {
 }
 
 
+///
+/// Defines the selectable background tints for kanban lists
+///
+/// @section    Purpose
+///     Provide consistent, subtle colors that help distinguish lists without changing their card content
+///
+/// @details    Each case exposes a stable raw-value identity, a user-facing title, and a corresponding list background color
+///
+/// @note       Case ordering controls the options presented by the list color picker
+///
 private enum KanbanListTint: String, CaseIterable, Identifiable {
     case neutral
     case blue
@@ -786,21 +831,21 @@ private enum KanbanListTint: String, CaseIterable, Identifiable {
 
     var title: String {
         switch self {
-        case .neutral: "Default"
-        case .blue:    "Blue"
-        case .green:   "Green"
-        case .orange:  "Orange"
-        case .red:     "Red"
+            case .neutral: "Default"
+            case .blue:    "Blue"
+            case .green:   "Green"
+            case .orange:  "Orange"
+            case .red:     "Red"
         }
     }
 
     var color: Color {
         switch self {
-        case .neutral: Color(.systemGray6)
-        case .blue:    Color.blue.opacity(0.12)
-        case .green:   Color.green.opacity(0.12)
-        case .orange:  Color.orange.opacity(0.12)
-        case .red:     Color.red.opacity(0.12)
+            case .neutral: Color(.systemGray6)
+            case .blue:    Color.blue.opacity(0.12)
+            case .green:   Color.green.opacity(0.12)
+            case .orange:  Color.orange.opacity(0.12)
+            case .red:     Color.red.opacity(0.12)
         }
     }
 }
@@ -824,6 +869,7 @@ private struct KanbanListActionsSheet: View {
     @State private var confirmingArchive = false
 
     var body: some View {
+        
         NavigationStack {
             List {
                 Section {
@@ -979,6 +1025,7 @@ struct KanbanCardView: View {
             id:                   card.id,
             word:                 title,
             listTitle:            card.listTitle,
+            isDivider:            card.isDivider,
             isTitleChecked:       card.isTitleChecked,
             startDate:            card.startDate,
             dueDate:              card.dueDate,

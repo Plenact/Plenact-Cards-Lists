@@ -200,6 +200,7 @@ struct CardDetailView: View {
             id:                   card.id,
             word:                 nextTitle,
             listTitle:            card.listTitle,
+            isDivider:            card.isDivider,
             isTitleChecked:       nextTitleChecked,
             startDate:            nextStartDate,
             dueDate:              nextDueDate,
