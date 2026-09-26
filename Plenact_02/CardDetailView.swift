@@ -721,13 +721,22 @@ struct CardDetailView: View {
                         .accessibilityLabel(titleChecked ? "Uncheck card title" : "Check card title")
 
                         VStack(alignment: .leading, spacing: 5) {
-                            TextField("Card title", text: $titleText)
-                                .font(.title2.weight(.bold))
-                                .focused($focusedField, equals: .title)
-                                .submitLabel(.done)
-                                .onSubmit { focusedField = nil }
-                                .onChange(of: titleText) { _, newValue in
-                                    syncCardState(title: newValue)
+                            HStack(alignment: .firstTextBaseline, spacing: 8) {
+                                TextField("Card title", text: $titleText)
+                                    .font(.title2.weight(.bold))
+                                    .focused($focusedField, equals: .title)
+                                    .submitLabel(.done)
+                                    .onSubmit { focusedField = nil }
+                                    .onChange(of: titleText) { _, newValue in
+                                        syncCardState(title: newValue)
+                                    }
+
+                                Text("\(card.listTitle)")
+                                    .font(.caption)
+                                    .foregroundStyle(.secondary)
+                                    .italic()
+                                    .lineLimit(1)
+                                    .truncationMode(.tail)
                                 }
 
                             TextField("Card subtitle", text: $subtitleText)
@@ -750,10 +759,6 @@ struct CardDetailView: View {
                                 .onChange(of: subtitleText) { _, newValue in
                                     syncCardState(subtitle: newValue)
                                 }
-
-                            Text("In list \(card.listTitle)")
-                                .font(.subheadline)
-                                .foregroundStyle(.secondary)
                         }
 
                         Spacer()
