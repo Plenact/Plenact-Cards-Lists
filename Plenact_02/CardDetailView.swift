@@ -775,6 +775,7 @@ struct CardDetailView: View {
     ///
     var body: some View {
 
+        ScrollViewReader { scrollProxy in
         ZStack {
             Color(.systemGroupedBackground)
                 .ignoresSafeArea()
@@ -792,8 +793,6 @@ struct CardDetailView: View {
                 .padding(16)
 
             } else {
-
-                ScrollViewReader { scrollProxy in
 
                 ScrollView {
 
@@ -855,60 +854,6 @@ struct CardDetailView: View {
 
                         Spacer()
 
-                        HStack(spacing: 16) {
-
-                            Menu {
-                                Button {
-                                    addChecklist(using: scrollProxy)
-                                } label: {
-                                    Label("Add checklist", systemImage: "checklist")
-                                }
-                                Button {
-                                    activeDatePicker = .start
-                                } label: {
-                                    Label(startDate == nil ? "Add start date" : "Edit start date", systemImage: "calendar")
-                                }
-                                Button {
-                                    activeDatePicker = .due
-                                } label: {
-                                    Label(dueDate == nil ? "Add due date" : "Edit due date", systemImage: "calendar.badge.clock")
-                                }
-                                Button {
-                                    focusedField = .comment
-                                } label: {
-                                    Label("Add comment", systemImage: "text.bubble")
-                                }
-                            } label: {
-                                Image(systemName: "plus.circle")
-                                    .font(.title2)
-                                    .foregroundStyle(.primary)
-                            }
-                            .accessibilityLabel("Add to card")
-
-                            Menu {
-                                Button(action: toggleCardTitle) {
-                                    Label(
-                                        titleChecked ? "Mark incomplete" : "Mark complete",
-                                        systemImage: titleChecked ? "square" : "checkmark.square"
-                                    )
-                                }
-                                Button {
-                                    focusedField = .description
-                                } label: {
-                                    Label("Edit description", systemImage: "text.alignleft")
-                                }
-                                Button {
-                                    activityFilter = .all
-                                } label: {
-                                    Label("Show all activity", systemImage: "clock.arrow.circlepath")
-                                }
-                            } label: {
-                                Image(systemName: "ellipsis")
-                                    .font(.title2)
-                                    .foregroundStyle(.secondary)
-                            }
-                            .accessibilityLabel("Card actions")
-                        }
                     }
                     .padding(16)
 
@@ -1053,13 +998,12 @@ struct CardDetailView: View {
                     .padding(.horizontal, 16)
                     .padding(.vertical, 12)
                 }
-                }
             }
             .padding(.bottom, 12)
             }
         }
         .safeAreaInset(edge: .top, spacing: 0) {
-            HStack {
+            HStack(spacing: 12) {
                 Button {
                     dismiss()
                 } label: {
@@ -1075,23 +1019,74 @@ struct CardDetailView: View {
 
                 Spacer()
 
-                Menu {
-                    ForEach(availableLists) { list in
-                        Button(list.title) {
-                            onMoveToList?(list.id)
-                            dismiss()
+                if !card.isSectionDivider {
+                    Menu {
+                        Button {
+                            addChecklist(using: scrollProxy)
+                        } label: {
+                            Label("Add checklist", systemImage: "checklist")
                         }
+                        Button {
+                            activeDatePicker = .start
+                        } label: {
+                            Label(startDate == nil ? "Add start date" : "Edit start date", systemImage: "calendar")
+                        }
+                        Button {
+                            activeDatePicker = .due
+                        } label: {
+                            Label(dueDate == nil ? "Add due date" : "Edit due date", systemImage: "calendar.badge.clock")
+                        }
+                        Button {
+                            focusedField = .comment
+                        } label: {
+                            Label("Add comment", systemImage: "text.bubble")
+                        }
+                    } label: {
+                        Image(systemName: "plus.circle")
+                            .font(.title2)
+                            .foregroundStyle(.primary)
+                            .frame(width: 44, height: 44)
+                            .contentShape(Rectangle())
                     }
-                } label: {
-                    Image(systemName: "arrowshape.turn.up.right")
-                        .font(.title3)
-                        .foregroundStyle(.primary)
-                        .frame(width: 44, height: 44)
-                        .contentShape(Rectangle())
+                    .accessibilityLabel("Add to card")
+
+                    Menu {
+                        Button(action: toggleCardTitle) {
+                            Label(
+                                titleChecked ? "Mark incomplete" : "Mark complete",
+                                systemImage: titleChecked ? "square" : "checkmark.square"
+                            )
+                        }
+                        Button {
+                            focusedField = .description
+                        } label: {
+                            Label("Edit description", systemImage: "text.alignleft")
+                        }
+                        Menu {
+                            ForEach(availableLists) { list in
+                                Button(list.title) {
+                                    onMoveToList?(list.id)
+                                    dismiss()
+                                }
+                            }
+                        } label: {
+                            Label("Move card", systemImage: "arrowshape.turn.up.right")
+                        }
+                        .disabled(availableLists.isEmpty)
+                        Button {
+                            activityFilter = .all
+                        } label: {
+                            Label("Show all activity", systemImage: "clock.arrow.circlepath")
+                        }
+                    } label: {
+                        Image(systemName: "ellipsis")
+                            .font(.title2)
+                            .foregroundStyle(.secondary)
+                            .frame(width: 44, height: 44)
+                            .contentShape(Rectangle())
+                    }
+                    .accessibilityLabel("Card actions")
                 }
-                .buttonStyle(.plain)
-                .disabled(availableLists.isEmpty)
-                .accessibilityLabel("Move card to another list")
             }
             .padding(.horizontal, 16)
             .padding(.vertical, 4)
@@ -1126,6 +1121,7 @@ struct CardDetailView: View {
                 }
             }
             .presentationDetents([.medium, .large])
+        }
         }
     }
 }
@@ -1208,6 +1204,7 @@ struct DetailSection<Content: View>: View {
                     }
                 }
             }
+
             content()
         }
         .padding(16)
@@ -1220,8 +1217,7 @@ struct DetailSection<Content: View>: View {
 // -------------------------------------- MARK: - Action Tile ---------------------------------- //
 
 ///
-/// Displays a compact action button within a detail section
-///
+/// Displays a labeled action tile in a card detail section
 /// @section    Purpose
 ///     Present a labeled action with a symbol and accent color in the quick-actions grid
 ///
