@@ -825,6 +825,7 @@ private struct NewKanbanCardSheet: View {
 
                 Section("Card details") {
                     TextField("Title (or --- for divider)", text: $title)
+                        .textInputAutocapitalization(.never)
                     TextField("Description", text: $description, axis: .vertical)
                         .lineLimit(3...8)
                 }
@@ -1121,7 +1122,7 @@ struct KanbanCardView: View {
                 .buttonStyle(.plain)
                 .accessibilityLabel(card.isTitleChecked ? "Uncheck card title" : "Check card title")
 
-                Text(card.word.capitalized)
+                Text(card.word)
                     .font(.headline)
                     .foregroundStyle(.primary)
 
@@ -1135,7 +1136,7 @@ struct KanbanCardView: View {
                     }
 
                     Button {
-                        renameDraft = card.word.capitalized
+                        renameDraft = card.word
                         isRenaming = true
                     } label: {
                         Label("Rename Card", systemImage: "pencil")
@@ -1190,13 +1191,14 @@ struct KanbanCardView: View {
         .padding(.horizontal, 4)
         .alert("Rename Card", isPresented: $isRenaming) {
             TextField("Card title", text: $renameDraft)
+                .textInputAutocapitalization(.never)
             Button("Cancel", role: .cancel) {}
             Button("Rename", action: renameCard)
                 .disabled(trimmedRenameDraft.isEmpty)
         } message: {
             Text("Enter a new title for this card.")
         }
-        .confirmationDialog("Delete \(card.word.capitalized)?", isPresented: $isConfirmingDelete, titleVisibility: .visible) {
+        .confirmationDialog("Delete \(card.word)?", isPresented: $isConfirmingDelete, titleVisibility: .visible) {
             Button("Delete Card", role: .destructive, action: onDeleteCard)
             Button("Cancel", role: .cancel) {}
         }
@@ -1256,7 +1258,7 @@ private struct CardInfoEditorSheet: View {
     init(card: KanbanCard, onSave: @escaping (String, String, String) -> Void) {
 
         self.onSave  = onSave
-        _title       = State(initialValue: card.word.capitalized)
+        _title       = State(initialValue: card.word)
         _subtitle    = State(initialValue: card.subtitle)
         _description = State(initialValue: card.funParagraph)
     }
@@ -1279,7 +1281,9 @@ private struct CardInfoEditorSheet: View {
             Form {
                 Section("Card details") {
                     TextField("Title", text: $title)
+                        .textInputAutocapitalization(.never)
                     TextField("Subtitle", text: $subtitle)
+                        .textInputAutocapitalization(.never)
                 }
 
                 Section("Description") {

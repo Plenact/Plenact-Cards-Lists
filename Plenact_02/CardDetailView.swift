@@ -81,7 +81,7 @@ struct CardDetailView: View {
         func text(for card: KanbanCard) -> String {
             switch self {
                 case .addedCard:
-                    return "Justin Reina added \(card.word.capitalized) to this card"
+                    return "Justin Reina added \(card.word) to this card"
                 case .createdCard:
                     return "Justin Reina created this card in \(card.listTitle)"
                 case .initialComment:
@@ -742,6 +742,7 @@ struct CardDetailView: View {
                             HStack(alignment: .firstTextBaseline, spacing: 8) {
                                 TextField("Card title", text: $titleText)
                                     .font(.title2.weight(.bold))
+                                    .textInputAutocapitalization(.never)
                                     .focused($focusedField, equals: .title)
                                     .submitLabel(.done)
                                     .onSubmit { focusedField = nil }
@@ -759,6 +760,7 @@ struct CardDetailView: View {
 
                             TextField("Card subtitle", text: $subtitleText)
                                 .font(.subheadline)
+                                .textInputAutocapitalization(.never)
                                 .foregroundColor(focusedField == .subtitle ? Color.secondary : Color.clear)
                                 .focused($focusedField, equals: .subtitle)
                                 .submitLabel(.done)
@@ -1031,7 +1033,7 @@ struct CardDetailView: View {
             .padding(.vertical, 8)
             .background(.ultraThinMaterial)
         }
-        .navigationTitle(card.isSectionDivider ? "---" : card.word.capitalized)
+        .navigationTitle(card.word)
         .navigationBarTitleDisplayMode(.inline)
         .navigationBarBackButtonHidden(true)
         .sheet(item: $activeDatePicker) { field in
