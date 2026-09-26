@@ -704,7 +704,7 @@ struct CardDetailView: View {
 
     ///
     /// @brief      Build the card detail presentation
-    /// @details    Composes the Trello-inspired sections and keeps the Back action in the bottom safe area
+    /// @details    Composes the card sections and places a compact close action in the top safe area
     ///
     /// @return     (some View) rendered card detail screen
     ///
@@ -715,15 +715,21 @@ struct CardDetailView: View {
                 .ignoresSafeArea()
 
             if card.isSectionDivider {
+
                 VStack(alignment: .leading) {
+
                     Text("---")
                         .font(.title2.weight(.bold))
+
                     Spacer(minLength: 0)
                 }
                 .frame(maxWidth: .infinity, maxHeight: .infinity, alignment: .topLeading)
                 .padding(16)
+
             } else {
+
                 ScrollViewReader { scrollProxy in
+
                 ScrollView {
 
                 VStack(alignment: .leading, spacing: 0) {
@@ -731,6 +737,7 @@ struct CardDetailView: View {
                     HStack(alignment: .center, spacing: 12) {
 
                         Button(action: toggleCardTitle) {
+                            
                             Image(systemName: titleChecked ? "checkmark.square.fill" : "square")
                                 .font(.title2)
                                 .foregroundStyle(titleChecked ? .blue : .secondary)
@@ -1017,23 +1024,28 @@ struct CardDetailView: View {
             .padding(.bottom, 12)
             }
         }
-        .safeAreaInset(edge: .bottom) {
-            Button {
-                dismiss()
-            } label: {
-                Text("Back")
-                    .font(.headline)
-                    .frame(maxWidth: .infinity)
-                    .padding(.vertical, 13)
-                    .foregroundStyle(.white)
-                    .background(Color.accentColor)
-                    .clipShape(RoundedRectangle(cornerRadius: 11, style: .continuous))
+        .safeAreaInset(edge: .top, spacing: 0) {
+            HStack {
+                Button {
+                    dismiss()
+                } label: {
+                    Image(systemName: "xmark")
+                        .font(.system(size: 16, weight: .semibold))
+                        .foregroundStyle(.primary)
+                        .frame(width: 44, height: 44)
+                        .background(Color(.systemGray5), in: Circle())
+                        .contentShape(Circle())
+                }
+                .buttonStyle(.plain)
+                .accessibilityLabel("Close card")
+
+                Spacer()
             }
             .padding(.horizontal, 16)
-            .padding(.vertical, 8)
-            .background(.ultraThinMaterial)
+            .padding(.vertical, 4)
+            .background(Color(.systemGroupedBackground))
         }
-        .navigationTitle(card.word)
+        .navigationTitle("")
         .navigationBarTitleDisplayMode(.inline)
         .navigationBarBackButtonHidden(true)
         .sheet(item: $activeDatePicker) { field in
