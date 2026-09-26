@@ -187,7 +187,9 @@ struct KanbanList: Identifiable {
 
     /// Supporting copy shown beneath the list title.
     var subtitle: String {
-        ["Ideas taking shape", "Ready for a little momentum", "Currently in progress", "Nearly across the finish line", "Done, or at least confidently presented"][id]
+        let subtitles = ["Ideas taking shape", "Ready for a little momentum", "Currently in progress", "Nearly across the finish line", "Done, or at least confidently presented"]
+
+        return subtitles[id % subtitles.count]
     }
 }
 

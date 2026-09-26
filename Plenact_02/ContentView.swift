@@ -21,6 +21,168 @@ struct ContentView: View {
 
     @State private var lists: [KanbanList] = SampleData.lists
 
+    ///
+    /// @fcn        ContentView.addCard(to:)
+    /// @brief      Add a new card at the top of the selected list
+    /// @details    Allocates a board-wide unique card identifier and inserts a default "new card" entry
+    ///
+    /// @param[in]  listID  Stable identifier of the list receiving the card
+    ///
+    /// @return     (Void) updates the matching list in the board state
+    ///
+    /// @pre        listID identifies a list in the current board
+    /// @post       The list contains the new card as its first card
+    ///
+    private func addCard(to listID: Int) {
+        guard let listIndex = lists.firstIndex(where: { $0.id == listID }) else { return }
+
+        let nextCardID  = (lists.flatMap { $0.cards.map(\.id) }.max() ?? -1) + 1
+        var updatedList = lists[listIndex]
+
+        updatedList.cards.insert(
+            KanbanCard(id: nextCardID, word: "new card", listTitle: updatedList.title),
+            at: 0
+        )
+
+        lists[listIndex] = updatedList
+    }
+
+
+    ///
+    /// @fcn        ContentView.copyList(with:)
+    /// @brief      Insert a copy of the selected list beside its source
+    /// @details    Creates new list and card identifiers while copying card content and current card state
+    ///
+    /// @param[in]  listID  Stable identifier of the list to copy
+    ///
+    /// @return     (Void) inserts the copied list immediately after the source list
+    ///
+    /// @pre        listID identifies a list in the current board
+    /// @post       The board contains a distinct copy with unique list and card identifiers
+    ///
+    private func copyList(with listID: Int) {
+        guard let sourceIndex = lists.firstIndex(where: { $0.id == listID }) else { return }
+
+        let source       = lists[sourceIndex]
+        let copiedTitle  = "\(source.title) Copy"
+        let copiedListID = (lists.map(\.id).max() ?? -1) + 1
+        var nextCardID   = (lists.flatMap { $0.cards.map(\.id) }.max() ?? -1) + 1
+
+        let copiedCards = source.cards.map { card in
+        
+            let copy = KanbanCard(
+                id:                   nextCardID,
+                word:                 card.word,
+                listTitle:            copiedTitle,
+                isTitleChecked:       card.isTitleChecked,
+                startDate:            card.startDate,
+                dueDate:              card.dueDate,
+                checklists:           card.checklists,
+                comments:             card.comments,
+                dismissedActivityIDs: card.dismissedActivityIDs,
+                descriptionOverride:  card.descriptionOverride
+            )
+
+            nextCardID += 1
+            
+            return copy
+        }
+
+        lists.insert(KanbanList(id: copiedListID, title: copiedTitle, cards: copiedCards), at: sourceIndex + 1)
+    }
+
+
+    ///
+    /// @fcn        ContentView.moveList(with:by:)
+    /// @brief      Move a list relative to its current board position
+    /// @details    Removes the matching list and reinserts it at the index specified by the offset
+    ///
+    /// @param[in]  listID  Stable identifier of the list to move
+    /// @param[in]  offset  Number of positions to move; negative moves earlier and positive moves later
+    ///
+    /// @return     (Void) reorders the board when the destination index is valid
+    ///
+    /// @pre        listID identifies a list in the current board
+    /// @post       The list occupies its destination index, or the board is unchanged for an invalid destination
+    ///
+    private func moveList(with listID: Int, by offset: Int) {
+
+        guard let sourceIndex = lists.firstIndex(where: { $0.id == listID }) else { return }
+
+        let destinationIndex = sourceIndex + offset
+
+        guard lists.indices.contains(destinationIndex) else { return }
+
+        let movedList = lists.remove(at: sourceIndex)
+
+        lists.insert(movedList, at: destinationIndex)
+    }
+
+
+    ///
+    /// @fcn        ContentView.sortList(with:ascending:)
+    /// @brief      Sort a list's cards by their titles
+    /// @details    Uses localized standard comparison to order card titles in the requested direction
+    ///
+    /// @param[in]  listID     Stable identifier of the list to sort
+    /// @param[in]  ascending  Whether to sort from A to Z; false sorts from Z to A
+    ///
+    /// @return     (Void) replaces the card order in the matching board list
+    ///
+    /// @pre        listID identifies a list in the current board
+    /// @post       Cards in the list are ordered by title in the requested direction
+    ///
+    private func sortList(with listID: Int, ascending: Bool) {
+
+        guard let listIndex = lists.firstIndex(where: { $0.id == listID }) else { return }
+
+        var updatedList = lists[listIndex]
+
+        updatedList.cards.sort {
+            let comparison = $0.word.localizedStandardCompare($1.word)
+            return ascending ? comparison == .orderedAscending : comparison == .orderedDescending
+        }
+
+        lists[listIndex] = updatedList
+    }
+
+
+    ///
+    /// @fcn        ContentView.archiveCompletedCards(in:)
+    /// @brief      Remove completed cards from a list
+    /// @details    Filters out cards whose title checkbox is selected
+    ///
+    /// @param[in]  listID  Stable identifier of the list to update
+    ///
+    /// @return     (Void) updates the matching list in the board state
+    ///
+    /// @pre        listID identifies a list in the current board
+    /// @post       Cards marked complete no longer appear in the active list
+    ///
+    private func archiveCompletedCards(in listID: Int) {
+
+        guard let listIndex = lists.firstIndex(where: { $0.id == listID }) else { return }
+
+        lists[listIndex].cards.removeAll(where: \.isTitleChecked)
+    }
+
+
+    ///
+    /// @fcn        ContentView.archiveList(with:)
+    /// @brief      Remove a list from the active board
+    /// @details    Deletes the list entry matching the supplied stable identifier
+    ///
+    /// @param[in]  listID  Stable identifier of the list to remove
+    ///
+    /// @return     (Void) updates the board's in-memory list collection
+    ///
+    /// @pre        listID identifies a list in the current board
+    /// @post       The list and its cards no longer appear on the active board
+    ///
+    private func archiveList(with listID: Int) {
+        lists.removeAll { $0.id == listID }
+    }
+
 
     ///
     /// @fcn        ContentView.toggleCardTitle
@@ -107,7 +269,15 @@ struct ContentView: View {
                                         screenSize: screen.size,
                                         toggleCardTitle: { cardID in
                                             toggleCardTitle(in: listIndex, cardID: cardID)
-                                        }
+                                        },
+                                        canMoveEarlier: listIndex > 0,
+                                        canMoveLater: listIndex < lists.count - 1,
+                                        onAddCard: { addCard(to: list.id) },
+                                        onCopyList: { copyList(with: list.id) },
+                                        onMoveList: { offset in moveList(with: list.id, by: offset) },
+                                        onSortList: { ascending in sortList(with: list.id, ascending: ascending) },
+                                        onArchiveCompleted: { archiveCompletedCards(in: list.id) },
+                                        onArchiveList: { archiveList(with: list.id) }
                                     )
                                     .frame(width: screen.size.width - 28, height: screen.size.height - 86)
                                 }
@@ -192,6 +362,18 @@ struct KanbanListView: View {
     let list: KanbanList
     let screenSize: CGSize
     let toggleCardTitle: (Int) -> Void
+    let canMoveEarlier: Bool
+    let canMoveLater: Bool
+    let onAddCard: () -> Void
+    let onCopyList: () -> Void
+    let onMoveList: (Int) -> Void
+    let onSortList: (Bool) -> Void
+    let onArchiveCompleted: () -> Void
+    let onArchiveList: () -> Void
+
+    @State private var showingListActions = false
+    @State private var isWatching = false
+    @State private var listTint: KanbanListTint = .neutral
 
     /// Maintains the original quarter-screen card sizing requirement.
     private var cardHeight: CGFloat {
@@ -213,12 +395,26 @@ struct KanbanListView: View {
 
                 Spacer()
 
+                if isWatching {
+                    Image(systemName: "eye.fill")
+                        .font(.caption)
+                        .foregroundStyle(.secondary)
+                }
+
                 Text("\(list.cards.count)")
                     .font(.subheadline.weight(.semibold))
                     .foregroundStyle(.secondary)
 
-                Image(systemName: "ellipsis")
-                    .foregroundStyle(.secondary)
+                Button {
+                    showingListActions = true
+                } label: {
+                    Image(systemName: "ellipsis")
+                        .foregroundStyle(.secondary)
+                        .frame(width: 32, height: 32)
+                        .contentShape(Rectangle())
+                }
+                .buttonStyle(.plain)
+                .accessibilityLabel("\(list.title) list actions")
             }
             .padding(.horizontal, 14)
             .padding(.top, 14)
@@ -246,9 +442,180 @@ struct KanbanListView: View {
                 .padding(8)
             }
         }
-        .background(Color(.systemGray6))
+        .background(listTint.color)
         .clipShape(RoundedRectangle(cornerRadius: 18, style: .continuous))
         .shadow(color: .black.opacity(0.18), radius: 10, y: 5)
+        .sheet(isPresented: $showingListActions) {
+            KanbanListActionsSheet(
+                list: list,
+                canMoveEarlier: canMoveEarlier,
+                canMoveLater: canMoveLater,
+                isWatching: $isWatching,
+                listTint: $listTint,
+                onAddCard: onAddCard,
+                onCopyList: onCopyList,
+                onMoveList: onMoveList,
+                onSortList: onSortList,
+                onArchiveCompleted: onArchiveCompleted,
+                onArchiveList: onArchiveList
+            )
+        }
+    }
+}
+
+
+private enum KanbanListTint: String, CaseIterable, Identifiable {
+    case neutral
+    case blue
+    case green
+    case orange
+    case red
+
+    var id: String { rawValue }
+
+    var title: String {
+        switch self {
+        case .neutral: "Default"
+        case .blue:    "Blue"
+        case .green:   "Green"
+        case .orange:  "Orange"
+        case .red:     "Red"
+        }
+    }
+
+    var color: Color {
+        switch self {
+        case .neutral: Color(.systemGray6)
+        case .blue:    Color.blue.opacity(0.12)
+        case .green:   Color.green.opacity(0.12)
+        case .orange:  Color.orange.opacity(0.12)
+        case .red:     Color.red.opacity(0.12)
+        }
+    }
+}
+
+
+private struct KanbanListActionsSheet: View {
+
+    let list: KanbanList
+    let canMoveEarlier: Bool
+    let canMoveLater: Bool
+    @Binding var isWatching: Bool
+    @Binding var listTint: KanbanListTint
+    let onAddCard: () -> Void
+    let onCopyList: () -> Void
+    let onMoveList: (Int) -> Void
+    let onSortList: (Bool) -> Void
+    let onArchiveCompleted: () -> Void
+    let onArchiveList: () -> Void
+
+    @Environment(\.dismiss) private var dismiss
+    @State private var confirmingArchive = false
+
+    var body: some View {
+        NavigationStack {
+            List {
+                Section {
+                    Button {
+                        onAddCard()
+                        dismiss()
+                    } label: {
+                        Label("Add card to top of list", systemImage: "plus")
+                    }
+
+                    Button {
+                        onCopyList()
+                        dismiss()
+                    } label: {
+                        Label("Copy list", systemImage: "doc.on.doc")
+                    }
+
+                    Menu {
+                        Button("Move earlier") {
+                            onMoveList(-1)
+                            dismiss()
+                        }
+                        .disabled(!canMoveEarlier)
+
+                        Button("Move later") {
+                            onMoveList(1)
+                            dismiss()
+                        }
+                        .disabled(!canMoveLater)
+                    } label: {
+                        Label("Move list", systemImage: "arrow.left.arrow.right")
+                            .foregroundStyle(.primary)
+                    }
+
+                    Menu {
+                        Button("Title A to Z") {
+                            onSortList(true)
+                            dismiss()
+                        }
+                        Button("Title Z to A") {
+                            onSortList(false)
+                            dismiss()
+                        }
+                    } label: {
+                        Label("Sort list", systemImage: "arrow.up.arrow.down")
+                            .foregroundStyle(.primary)
+                    }
+
+                    Menu {
+                        ForEach(KanbanListTint.allCases) { tint in
+                            Button {
+                                listTint = tint
+                            } label: {
+                                Label(tint.title, systemImage: listTint == tint ? "checkmark.circle.fill" : "circle.fill")
+                            }
+                        }
+                    } label: {
+                        Label("Change list color", systemImage: "paintpalette")
+                            .foregroundStyle(.primary)
+                    }
+
+                    Button {
+                        isWatching.toggle()
+                    } label: {
+                        Label(isWatching ? "Unwatch" : "Watch", systemImage: isWatching ? "eye.slash" : "eye")
+                    }
+                }
+
+                Section {
+                    Button {
+                        onArchiveCompleted()
+                        dismiss()
+                    } label: {
+                        Label("Archive completed cards", systemImage: "archivebox")
+                    }
+
+                    Button(role: .destructive) {
+                        confirmingArchive = true
+                    } label: {
+                        Label("Archive list", systemImage: "archivebox")
+                    }
+                }
+            }
+            .listStyle(.insetGrouped)
+            .navigationTitle("List actions")
+            .navigationBarTitleDisplayMode(.inline)
+            .toolbar {
+                ToolbarItem(placement: .topBarLeading) {
+                    Button("Close", systemImage: "xmark") {
+                        dismiss()
+                    }
+                }
+            }
+            .confirmationDialog("Archive \(list.title)?", isPresented: $confirmingArchive, titleVisibility: .visible) {
+                Button("Archive list", role: .destructive) {
+                    onArchiveList()
+                    dismiss()
+                }
+            }
+        }
+        .presentationDetents([.medium, .large])
+        .presentationDragIndicator(.visible)
+        .presentationCornerRadius(28)
     }
 }
 
