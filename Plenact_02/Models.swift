@@ -21,12 +21,13 @@ import Foundation
 ///
 struct KanbanCard: Identifiable, Hashable {
 
-    let id:             Int         /* Stable numeric identifier for the card             */
-    let word:           String      /* Display word shown as the card's title             */
-    let listTitle:      String      /* Name of the list where the card resides            */
-    var isTitleChecked: Bool        /* Whether the card's main title checkbox is selected */
-    var startDate:      Date?       /* Optional start date for the card                   */
-    var dueDate:        Date?       /* Optional due date for the card                     */
+    let id:             Int                 /* Stable numeric identifier for the card             */
+    let word:           String              /* Display word shown as the card's title             */
+    let listTitle:      String              /* Name of the list where the card resides            */
+    var isTitleChecked: Bool                /* Whether the card's main title checkbox is selected */
+    var startDate:      Date?               /* Optional start date for the card                   */
+    var dueDate:        Date?               /* Optional due date for the card                     */
+    var checklists:     [KanbanChecklist]   /* List of checklists associated with the card        */
 
 
     ///
@@ -47,7 +48,7 @@ struct KanbanCard: Identifiable, Hashable {
     /// @pre        All values should be valid for the board's deterministic sample data
     /// @post       The card contains the provided identity, title text, and checked state
     ///
-    init(id: Int, word: String, listTitle: String, isTitleChecked: Bool = false, startDate: Date? = nil, dueDate: Date? = nil) {
+    init(id: Int, word: String, listTitle: String, isTitleChecked: Bool = false, startDate: Date? = nil, dueDate: Date? = nil, checklists: [KanbanChecklist]? = nil) {
 
         self.id             = id                /* Stable numeric identifier for the card             */
         self.word           = word              /* Display word shown as the card's title             */
@@ -55,6 +56,11 @@ struct KanbanCard: Identifiable, Hashable {
         self.isTitleChecked = isTitleChecked    /* Whether the card's main title checkbox is selected */
         self.startDate      = startDate         /* Optional start date for the card                   */
         self.dueDate        = dueDate           /* Optional due date for the card                     */
+        self.checklists     = checklists ?? [
+            KanbanChecklist(title: "Focus", items: ["Gather the important bits", "Make it look intentional", "Celebrate the surprisingly good result"], completed: id % 4),
+            KanbanChecklist(title: "Plan", items: ["Choose the next useful step", "Stop building", "Start producing"], completed: 1),
+            KanbanChecklist(title: "Routine", items: ["Home", "Gym", "Work"])
+        ]
     }
 
     /// Human-readable label for the card's start date.
@@ -91,12 +97,12 @@ struct KanbanCard: Identifiable, Hashable {
 
     /// Checklist labels used by the card detail presentation
     var checklistItems: [String] {
-        ["Gather the important bits", "Make it look intentional", "Celebrate the surprisingly good result"]
+        checklists.first?.items ?? []
     }
 
     /// Number of checklist items shown as complete for this sample card
     var completedChecklistItems: Int {
-        id % 4
+        checklists.first?.completed ?? 0
     }
 
     /// Number of sample comments shown on the board card
@@ -183,7 +189,7 @@ struct KanbanList: Identifiable {
 /// @section    Purpose
 ///     Provide a small value type for rendering both seeded and newly created checklist groups
 ///
-struct KanbanChecklist: Identifiable {
+struct KanbanChecklist: Identifiable, Hashable {
 
     let id:                    UUID       /* Unique identifier for the checklist       */
     let title:                 String     /* Title of the checklist                    */

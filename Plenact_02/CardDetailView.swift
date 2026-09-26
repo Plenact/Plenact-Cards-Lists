@@ -64,11 +64,7 @@ struct CardDetailView: View {
         _startDate    = State(initialValue: card.startDate)         /* Initialize the start date from the card state                        */
         _dueDate      = State(initialValue: card.dueDate)           /* Initialize the due date from the card state                          */
 
-        _checklists = State(initialValue: [                         /* Initialize the checklist groups based on the card's current state    */
-            KanbanChecklist(title: "Focus",   items: card.checklistItems,            completed: card.completedChecklistItems),
-            KanbanChecklist(title: "Plan",    items: ["Choose the next useful step", "Stop building", "Start producing"], completed: 1),
-            KanbanChecklist(title: "Routine", items: ["Home",                        "Gym",           "Work"])
-        ])
+        _checklists = State(initialValue: card.checklists)          /* Initialize checklist state from the card's stored values              */
     }
 
 
@@ -103,7 +99,8 @@ struct CardDetailView: View {
             listTitle:      card.listTitle,
             isTitleChecked: nextTitleChecked,
             startDate:      nextStartDate,
-            dueDate:        nextDueDate
+            dueDate:        nextDueDate,
+            checklists:     checklists
         )
 
         onTitleToggle?(updatedCard)
@@ -177,6 +174,7 @@ struct CardDetailView: View {
     ///
     private func addChecklist() {
         checklists.append(KanbanChecklist(title: "Checklist"))
+        syncCardState()
     }
 
 
@@ -190,6 +188,7 @@ struct CardDetailView: View {
     ///
     private func deleteChecklist(with checklistID: UUID) {
         checklists.removeAll { $0.id == checklistID }
+        syncCardState()
     }
     
     ///
@@ -216,6 +215,7 @@ struct CardDetailView: View {
             items:     checklist.items + ["Item \(itemNumber)"],
             completed: checklist.completed
         )
+        syncCardState()
     }
 
 
@@ -252,6 +252,7 @@ struct CardDetailView: View {
             items:                 checklist.items,
             completedItemIndices:  completedItemIndices
         )
+        syncCardState()
     }
 
 
@@ -290,6 +291,7 @@ struct CardDetailView: View {
             items:                 items,
             completedItemIndices:  checklist.completedItemIndices
         )
+        syncCardState()
     }
 
 
@@ -340,6 +342,7 @@ struct CardDetailView: View {
             items:                 items,
             completedItemIndices:  completedItemIndices
         )
+        syncCardState()
     }
 
 
