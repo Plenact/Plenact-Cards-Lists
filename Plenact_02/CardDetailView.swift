@@ -115,6 +115,8 @@ struct CardDetailView: View {
 
     // Selection modes for editable fields within the card detail view
     private enum EditableField: Hashable {
+        case title              /* The title field is being edited       */
+        case subtitle           /* The subtitle field is being edited    */
         case description        /* The description field is being edited */
         case comment            /* The comment field is being edited     */
     }
@@ -128,6 +130,8 @@ struct CardDetailView: View {
     @State private var checklists: [KanbanChecklist]         /* The checklist groups associated with the selected card       */
     @State private var checklistToFocus: UUID?               /* Newly added checklist whose first item should be focused     */
     @State private var titleChecked: Bool                    /* Whether the card title itself is checked                     */
+    @State private var titleText: String                     /* Editable card title displayed in the detail header           */
+    @State private var subtitleText: String                  /* Editable card subtitle displayed in the detail header        */
     @State private var startDate: Date?                      /* Optional start date for the selected card                    */
     @State private var dueDate: Date?                        /* Optional due date for the selected card                      */
     @State private var descriptionText: String               /* Editable description shown on this card                      */
@@ -151,11 +155,13 @@ struct CardDetailView: View {
         self.onTitleToggle = onTitleToggle                                      /* Callback invoked when the card title checkbox is toggled             */
 
         _titleChecked         = State(initialValue: card.isTitleChecked)        /* Initialize the title checked state based on the card's current value */
+        _titleText            = State(initialValue: card.word)                  /* Initialize the editable title from the card                          */
+        _subtitleText         = State(initialValue: card.subtitle)              /* Initialize the editable subtitle from the card                       */
         _startDate            = State(initialValue: card.startDate)             /* Initialize the start date from the card state                        */
         _dueDate              = State(initialValue: card.dueDate)               /* Initialize the due date from the card state                          */
         _descriptionText      = State(initialValue: card.funParagraph)          /* Initialize the editable description from the card                    */
         _comments             = State(initialValue: card.comments)              /* Initialize comments from the selected card                           */
-        _dismissedActivityIDs = State(initialValue: card.dismissedActivityIDs)  /* Initialize dismissed activity IDs from the card state                 */
+        _dismissedActivityIDs = State(initialValue: card.dismissedActivityIDs)  /* Initialize dismissed activity IDs from the card state                */
 
         _checklists = State(initialValue: card.checklists)                      /* Initialize checklist state from the card's stored values             */
     }
@@ -175,6 +181,8 @@ struct CardDetailView: View {
     /// @post       The parent view receives the current card state for persistence
     ///
     private func syncCardState(
+        title:          String? = nil,
+        subtitle:       String? = nil,
         titleChecked:   Bool? = nil,
         startDate:      Date? = nil,
         dueDate:        Date? = nil,
@@ -183,12 +191,14 @@ struct CardDetailView: View {
     ) {
 
         let nextTitleChecked = titleChecked                      ?? self.titleChecked
+        let nextTitle         = title         ?? titleText
+        let nextSubtitle      = subtitle      ?? (card.subtitleOverride == nil && subtitleText == card.subtitle ? nil : subtitleText)
         let nextStartDate    = clearStartDate ? nil : (startDate ?? self.startDate)
         let nextDueDate      = clearDueDate   ? nil : (dueDate   ?? self.dueDate)
 
         let updatedCard = KanbanCard(
             id:                   card.id,
-            word:                 card.word,
+            word:                 nextTitle,
             listTitle:            card.listTitle,
             isTitleChecked:       nextTitleChecked,
             startDate:            nextStartDate,
@@ -197,7 +207,7 @@ struct CardDetailView: View {
             comments:             comments,
             dismissedActivityIDs: dismissedActivityIDs,
             descriptionOverride:  descriptionText,
-            subtitleOverride:     card.subtitleOverride
+            subtitleOverride:     nextSubtitle
         )
 
         onTitleToggle?(updatedCard)
@@ -711,9 +721,48 @@ struct CardDetailView: View {
                         .accessibilityLabel(titleChecked ? "Uncheck card title" : "Check card title")
 
                         VStack(alignment: .leading, spacing: 5) {
+                            if focusedField == .title {
+                                TextField("Card title", text: $titleText)
+                                    .font(.title2.weight(.bold))
+                                    .focused($focusedField, equals: .title)
+                                    .submitLabel(.done)
+                                    .onSubmit { focusedField = nil }
+                                    .onChange(of: titleText) { _, newValue in
+                                        syncCardState(title: newValue)
+                                    }
+                            } else {
+                                Button {
+                                    focusedField = .title
+                                } label: {
+                                    Text(titleText.capitalized)
+                                        .font(.title2.weight(.bold))
+                                        .foregroundStyle(.primary)
+                                }
+                                .buttonStyle(.plain)
+                                .accessibilityLabel("Edit card title")
+                            }
 
-                            Text(card.word.capitalized)
-                                .font(.title2.weight(.bold))
+                            if focusedField == .subtitle {
+                                TextField("Card subtitle", text: $subtitleText)
+                                    .font(.subheadline)
+                                    .foregroundStyle(.secondary)
+                                    .focused($focusedField, equals: .subtitle)
+                                    .submitLabel(.done)
+                                    .onSubmit { focusedField = nil }
+                                    .onChange(of: subtitleText) { _, newValue in
+                                        syncCardState(subtitle: newValue)
+                                    }
+                            } else {
+                                Button {
+                                    focusedField = .subtitle
+                                } label: {
+                                    Text(subtitleText)
+                                        .font(.subheadline)
+                                        .foregroundStyle(.secondary)
+                                }
+                                .buttonStyle(.plain)
+                                .accessibilityLabel("Edit card subtitle")
+                            }
 
                             Text("In list \(card.listTitle)")
                                 .font(.subheadline)

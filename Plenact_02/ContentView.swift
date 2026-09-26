@@ -949,10 +949,10 @@ struct KanbanCardView: View {
     let onDeleteCard: () -> Void                    /* The action invoked when this card is deleted                  */
     let onToggle: () -> Void                        /* Callback invoked when the card's title checkbox is toggled    */
 
-    @State private var renameDraft = ""
-    @State private var isRenaming = false
-    @State private var isEditingInfo = false
-    @State private var isConfirmingDelete = false
+    @State private var renameDraft        = ""                  /* Draft text for the rename operation                        */
+    @State private var isRenaming         = false               /* Flag indicating if the rename operation is active          */
+    @State private var isEditingInfo      = false               /* Flag indicating if the card info editing mode is active    */
+    @State private var isConfirmingDelete = false               /* Flag indicating if the delete confirmation dialog is shown */
 
 
     private var trimmedRenameDraft: String {
@@ -1116,14 +1116,21 @@ struct KanbanCardView: View {
 }
 
 
+/// Presents the full editor for a card's title, board subtitle, and detail description
+///
+/// @section    Purpose
+///     Collect card display text and submit the completed values through the supplied save callback
+///
+/// @note   The parent card view owns persistence; cancel dismisses without invoking the callback
+///
 private struct CardInfoEditorSheet: View {
 
     let onSave: (String, String, String) -> Void
 
-    @Environment(\.dismiss) private var dismiss
-    @State private var title:       String
-    @State private var subtitle:    String
-    @State private var description: String
+    @Environment(\.dismiss) private var dismiss     /* Dismiss action for the sheet         */
+    @State private var title:       String          /* Draft text for the title field       */
+    @State private var subtitle:    String          /* Draft text for the subtitle field    */
+    @State private var description: String          /* Draft text for the description field */
 
     ///
     /// @fcn        CardInfoEditorSheet.trimmedTitle
