@@ -53,6 +53,28 @@ struct ContentView: View {
         lists.append(KanbanList(id: nextListID, title: newTitle, cards: []))
     }
 
+    ///
+    /// @fcn        ContentView.safeFrameDimension(_:subtracting:)
+    /// @brief      Return a finite positive frame dimension after applying an inset
+    /// @details    Subtracts the requested inset and substitutes a one-point minimum when the result is non-finite or too small
+    ///
+    /// @param[in]  dimension  Proposed source dimension from the parent geometry
+    /// @param[in]  inset      Amount to subtract from the source dimension
+    ///
+    /// @return     (CGFloat) finite dimension of at least one point
+    ///
+    /// @pre        No input range is required; non-finite and undersized results are handled
+    /// @post       The result is finite and greater than zero
+    ///
+    private func safeFrameDimension(_ dimension: CGFloat, subtracting inset: CGFloat) -> CGFloat {
+
+        let availableDimension = (dimension - inset)
+        
+        guard availableDimension.isFinite else { return 1 }
+        
+        return max(availableDimension, 1)
+    }
+
 
     ///
     /// @fcn        ContentView.addCard(to:title:description:)
@@ -85,6 +107,58 @@ struct ContentView: View {
         )
 
         lists[listIndex] = updatedList
+    }
+
+    ///
+    /// @fcn        ContentView.deleteCard(in:cardID:)
+    /// @brief      Remove one card from a board list
+    /// @details    Finds the list by its stable identifier and removes the card matching its identifier
+    ///
+    /// @param[in]  listID  Stable identifier of the list containing the card
+    /// @param[in]  cardID  Stable identifier of the card to delete
+    ///
+    /// @return     (Void) updates the selected list in the board state
+    ///
+    /// @pre        listID identifies a list in the board
+    /// @post       The matching card no longer appears in that list
+    ///
+    private func deleteCard(in listID: Int, cardID: Int) {
+
+        guard let listIndex = lists.firstIndex(where: { $0.id == listID }) else { return }
+
+        lists[listIndex].cards.removeAll { $0.id == cardID }
+    }
+
+    ///
+    /// @fcn        ContentView.moveCard(in:cardID:toIndex:)
+    /// @brief      Reorder one card within a board list
+    /// @details    Removes the source card and inserts it at the target card's position
+    ///
+    /// @param[in]  listID    Stable identifier of the list to reorder
+    /// @param[in]  cardID           Stable identifier of the card being moved
+    /// @param[in]  destinationIndex Zero-based destination index in the list
+    ///
+    /// @return     (Void) updates the card order in the selected list
+    ///
+    /// @pre        listID identifies a list containing cardID
+    /// @post       The card occupies the requested destination index within the list
+    ///
+    private func moveCard(in listID: Int, cardID: Int, toIndex destinationIndex: Int) {
+
+        guard let listIndex = lists.firstIndex(where: { $0.id == listID }) else { return }
+
+        var cards = lists[listIndex].cards
+
+        guard let sourceIndex = cards.firstIndex(where: { $0.id == cardID }), !cards.isEmpty else { return }
+        let safeDestinationIndex = min(max(destinationIndex, 0), cards.count - 1)
+        guard sourceIndex != safeDestinationIndex else { return }
+
+        let movedCard = cards.remove(at: sourceIndex)
+        cards.insert(movedCard, at: safeDestinationIndex)
+
+        withAnimation(.easeInOut(duration: 0.2)) {
+            lists[listIndex].cards = cards
+        }
     }
 
 
@@ -304,11 +378,15 @@ struct ContentView: View {
                     .ignoresSafeArea()
 
                     VStack(spacing: 0) {
+
                         BoardHeader(settings: $displaySettings, onAddList: addList)
 
                         ScrollView(.horizontal, showsIndicators: false) {
+
                             HStack(spacing: 12) {
+
                                 ForEach(Array(lists.enumerated()), id: \.element.id) { listIndex, list in
+
                                     KanbanListView(
                                         list: list,
                                         screenSize: screen.size,
@@ -325,9 +403,16 @@ struct ContentView: View {
                                         onMoveList: { offset in moveList(with: list.id, by: offset) },
                                         onSortList: { ascending in sortList(with: list.id, ascending: ascending) },
                                         onArchiveCompleted: { archiveCompletedCards(in: list.id) },
-                                        onArchiveList: { archiveList(with: list.id) }
+                                        onArchiveList: { archiveList(with: list.id) },
+                                        onDeleteCard: { cardID in deleteCard(in: list.id, cardID: cardID) },
+                                        onMoveCard: { cardID, destinationIndex in
+                                            moveCard(in: list.id, cardID: cardID, toIndex: destinationIndex)
+                                        }
                                     )
-                                    .frame(width: screen.size.width - 28, height: screen.size.height - 86)
+                                    .frame(
+                                        width:  safeFrameDimension(screen.size.width, subtracting:  28),
+                                        height: safeFrameDimension(screen.size.height, subtracting: 86)
+                                    )
                                 }
                             }
                             .scrollTargetLayout()
@@ -408,8 +493,6 @@ struct BoardHeader: View {
 }
 
 
-/// Presents board-level display preferences in a dismissible settings sheet.
-///
 /// @section    Purpose
 ///     Let the user control which metadata badges appear on board cards
 ///
@@ -473,36 +556,46 @@ struct KanbanListView: View {
         var id: String { rawValue }
     }
 
-    let list: KanbanList
-    let screenSize: CGSize
-    let displaySettings: BoardDisplaySettings
-    let toggleCardTitle: (Int) -> Void
-    let canMoveEarlier: Bool
-    let canMoveLater:  Bool
-    let onAddCard: (String, String) -> Void
-    let onCopyList: () -> Void
-    let onMoveList: (Int) -> Void
-    let onSortList: (Bool) -> Void
-    let onArchiveCompleted: () -> Void
-    let onArchiveList: () -> Void
+    let list: KanbanList                        /* The kanban list data rendered by the view                      */
+    let screenSize: CGSize                      /* The size of the device screen used for layout calculations     */    
+    let displaySettings: BoardDisplaySettings   /* The board's display settings affecting card and list rendering */
+    let toggleCardTitle: (Int) -> Void          /* The action invoked to toggle the title of a card               */
+    let canMoveEarlier: Bool                    /* Indicates whether the list can be moved earlier in the board   */
+    let canMoveLater:  Bool                     /* Indicates whether the list can be moved later in the board     */
+    let onAddCard: (String, String) -> Void     /* The action invoked to add a new card to the list               */
+    let onCopyList: () -> Void                  /* The action invoked to copy the list                            */
+    let onMoveList: (Int) -> Void               /* The action invoked to move the list by a specified offset      */
+    let onSortList: (Bool) -> Void              /* The action invoked to sort the list based on a specified order */
+    let onArchiveCompleted: () -> Void          /* The action invoked to archive all completed cards in the list  */
+    let onArchiveList: () -> Void               /* The action invoked to archive the entire list                  */
+    let onDeleteCard: (Int) -> Void             /* The action invoked to delete a card at a specified index       */
+    let onMoveCard: (Int, Int) -> Void          /* Move a card to a destination index in this list                */
 
-    @State private var activeSheet: ActiveSheet?
-    @State private var isWatching = false
-    @State private var listTint: KanbanListTint = .neutral
+    @State private var activeSheet: ActiveSheet?            /* The currently active sheet presented modally        */
+    @State private var isWatching               = false     /* Indicates whether the user is watching the list     */
+    @State private var listTint: KanbanListTint = .neutral  /* The tint color applied to the list header and cards */
+    @State private var editMode: EditMode       = .inactive /* Indicates whether the list is in edit mode          */
 
-    /// Maintains the original quarter-screen card sizing requirement.
+    /// Maintains the original quarter-screen card sizing requirement
     private var cardHeight: CGFloat {
-        screenSize.height * 0.25
+
+        let quarterHeight = screenSize.height * 0.25
+        
+        return quarterHeight.isFinite ? max(quarterHeight, 1) : 1
     }
 
-    /// Builds one list panel and its card navigation destinations.
+    /// Builds one list panel and its card navigation destinations
     var body: some View {
 
         VStack(spacing: 0) {
+
             HStack(alignment: .top) {
+
                 VStack(alignment: .leading, spacing: 3) {
+
                     Text(list.title)
                         .font(.title3.weight(.bold))
+
                     Text(list.subtitle)
                         .font(.caption)
                         .foregroundStyle(.secondary)
@@ -510,7 +603,21 @@ struct KanbanListView: View {
 
                 Spacer()
 
+                Button {
+                    withAnimation(.easeInOut(duration: 0.2)) {
+                        editMode = editMode == .active ? .inactive : .active
+                    }
+                } label: {
+                    Image(systemName: editMode == .active ? "checkmark.circle.fill" : "arrow.up.arrow.down.circle")
+                        .foregroundStyle(.secondary)
+                        .frame(width: 32, height: 32)
+                        .contentShape(Rectangle())
+                }
+                .buttonStyle(.plain)
+                .accessibilityLabel(editMode == .active ? "Done reordering cards" : "Reorder cards")
+
                 if isWatching {
+
                     Image(systemName: "eye.fill")
                         .font(.caption)
                         .foregroundStyle(.secondary)
@@ -523,6 +630,7 @@ struct KanbanListView: View {
                 Button {
                     activeSheet = .listActions
                 } label: {
+
                     Image(systemName: "ellipsis")
                         .foregroundStyle(.secondary)
                         .frame(width: 32, height: 32)
@@ -535,29 +643,54 @@ struct KanbanListView: View {
             .padding(.top, 14)
             .padding(.bottom, 10)
 
-            ScrollView(.vertical, showsIndicators: true) {
-                VStack(spacing: 8) {
-                    ForEach(list.cards) { card in
-                        NavigationLink(value: card) {
-                            KanbanCardView(card: card, height: cardHeight, displaySettings: displaySettings) {
-                                toggleCardTitle(card.id)
-                            }
+            List {
+                ForEach(list.cards) { card in
+                    NavigationLink(value: card) {
+                        KanbanCardView(card: card, height: cardHeight, displaySettings: displaySettings) {
+                            toggleCardTitle(card.id)
                         }
-                        .buttonStyle(.plain)
                     }
-
-                    Button {
-                        activeSheet = .newCard
-                    } label: {
-                        Label("Add card", systemImage: "plus")
-                            .font(.subheadline.weight(.medium))
-                            .foregroundStyle(.secondary)
-                            .frame(maxWidth: .infinity, alignment: .leading)
-                            .padding(.vertical, 8)
+                    .buttonStyle(.plain)
+                    .listRowInsets(EdgeInsets(top: 4, leading: 4, bottom: 4, trailing: 4))
+                    .listRowSeparator(.hidden)
+                    .listRowBackground(Color.clear)
+                    .swipeActions(edge: .trailing, allowsFullSwipe: true) {
+                        Button(role: .destructive) {
+                            onDeleteCard(card.id)
+                        } label: {
+                            Label("Delete", systemImage: "trash")
+                        }
                     }
                 }
-                .padding(8)
+                .onMove { sourceOffsets, destinationOffset in
+                    guard let sourceIndex = sourceOffsets.first,
+                          list.cards.indices.contains(sourceIndex) else {
+                        return
+                    }
+
+                    let finalIndex = sourceIndex < destinationOffset ? destinationOffset - 1 : destinationOffset
+                    onMoveCard(list.cards[sourceIndex].id, finalIndex)
+                }
+
+                Button {
+                    activeSheet = .newCard
+                } label: {
+                    Label("Add card", systemImage: "plus")
+                        .font(.subheadline.weight(.medium))
+                        .foregroundStyle(.secondary)
+                        .frame(maxWidth: .infinity, alignment: .leading)
+                        .padding(.vertical, 8)
+                }
+                .listRowInsets(EdgeInsets(top: 4, leading: 8, bottom: 4, trailing: 8))
+                .listRowSeparator(.hidden)
+                .listRowBackground(Color.clear)
             }
+            .listStyle(.plain)
+            .environment(\.editMode, $editMode)
+            .scrollContentBackground(.hidden)
+            .background(.clear)
+            .padding(.horizontal, 4)
+            .padding(.bottom, 4)
         }
         .background(listTint.color)
         .clipShape(RoundedRectangle(cornerRadius: 18, style: .continuous))
@@ -664,17 +797,17 @@ private enum KanbanListTint: String, CaseIterable, Identifiable {
 
 private struct KanbanListActionsSheet: View {
 
-    let list: KanbanList
-    let canMoveEarlier: Bool
-    let canMoveLater: Bool
-    @Binding var isWatching: Bool
-    @Binding var listTint: KanbanListTint
-    let onAddCard: () -> Void
-    let onCopyList: () -> Void
-    let onMoveList: (Int) -> Void
-    let onSortList: (Bool) -> Void
-    let onArchiveCompleted: () -> Void
-    let onArchiveList: () -> Void
+    let list: KanbanList                   /* The Kanban list this sheet is associated with                                 */
+    let canMoveEarlier: Bool               /* Indicates if the list can be moved earlier                                    */
+    let canMoveLater: Bool                 /* Indicates if the list can be moved later                                      */
+    @Binding var isWatching: Bool          /* Indicates if the user is watching the list                                    */
+    @Binding var listTint: KanbanListTint  /* The current tint color of the list                                            */
+    let onAddCard: () -> Void              /* Action to perform when adding a card                                          */
+    let onCopyList: () -> Void             /* Action to perform when copying the list                                       */
+    let onMoveList: (Int) -> Void          /* Action to perform when moving the list by a given offset                      */
+    let onSortList: (Bool) -> Void         /* Action to perform when sorting the list; true for A to Z, false for Z to A    */
+    let onArchiveCompleted: () -> Void     /* Action to perform when archiving completed cards                              */
+    let onArchiveList: () -> Void          /* Action to perform when archiving the entire list                              */
 
     @Environment(\.dismiss) private var dismiss
     @State private var confirmingArchive = false
@@ -774,6 +907,7 @@ private struct KanbanListActionsSheet: View {
                 }
             }
             .confirmationDialog("Archive \(list.title)?", isPresented: $confirmingArchive, titleVisibility: .visible) {
+
                 Button("Archive list", role: .destructive) {
                     onArchiveList()
                     dismiss()
@@ -797,10 +931,10 @@ private struct KanbanListActionsSheet: View {
 ///
 struct KanbanCardView: View {
 
-    let card: KanbanCard
-    let height: CGFloat
-    let displaySettings: BoardDisplaySettings
-    let onToggle: () -> Void
+    let card: KanbanCard                            /* The kanban card being displayed                               */
+    let height: CGFloat                             /* The fixed height of the card view                             */
+    let displaySettings: BoardDisplaySettings       /* Settings controlling which elements of the card are displayed */
+    let onToggle: () -> Void                        /* Callback invoked when the card's title checkbox is toggled    */
 
     /// Builds a fixed-height card summary within its parent list.
     var body: some View {
@@ -808,6 +942,7 @@ struct KanbanCardView: View {
         VStack(alignment: .leading, spacing: 9) {
 
             HStack(alignment: .center, spacing: 8) {
+
                 Button {
                     onToggle()
                 } label: {
@@ -821,6 +956,8 @@ struct KanbanCardView: View {
                 Text(card.word.capitalized)
                     .font(.headline)
                     .foregroundStyle(.primary)
+
+                Spacer(minLength: 4)
             }
 
             Text(card.subtitle)
@@ -860,7 +997,7 @@ struct KanbanCardView: View {
 
 // -------------------------------------- MARK: - Previews -------------------------------------- //
 
-/// Preview the complete board presentation with deterministic sample data.
+/// Preview the complete board presentation with deterministic sample data
 #Preview {
     ContentView()
 }
