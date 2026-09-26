@@ -56,6 +56,30 @@ struct CardDetailView: View {
         }
     }
 
+    ///
+    /// Identifies the modal sheet currently presented by the card detail view
+    ///
+    /// @section    Purpose
+    ///     Distinguish date-picker presentation from the card-member management sheet
+    ///
+    /// @details    Each case supplies a stable identity so SwiftUI can update or replace the active sheet reliably
+    ///
+    /// @note       The date case carries the specific start or due date field to edit
+    ///
+    private enum ActiveSheet: Identifiable {
+
+        case date(DateField)        /* Date picker sheet for editing a specific date field */
+        case members                /* Card member management sheet                        */
+
+        var id: String {            /* Stable identity for the active sheet                */
+
+            switch self {
+                case .date(let field): "date-\(field.id)"
+                case .members:         "members"
+            }
+        }
+    }
+
     /// Stable identifiers and display copy for the card's generated activity entries.
     ///
     /// @section    Purpose
@@ -69,25 +93,26 @@ struct CardDetailView: View {
         var id: String { rawValue }
 
         ///
-        /// @fcn        GeneratedActivity.text(for:)
+        /// @fcn        GeneratedActivity.text(for:actorName:)
         /// @brief      Generate the display text for an activity entry
         /// @details    Resolves this activity type into user-visible copy using the selected card's title and list
         ///
-        /// @param[in]  card    Card whose activity feed is being rendered
+        /// @param[in]  card       Card whose activity feed is being rendered
+        /// @param[in]  actorName  Current user name shown as the activity actor
         ///
         /// @return     (String) display text for this generated activity entry
         ///
         /// @pre        card contains the identity and list details used by the activity message
         /// @post       No card or activity state is modified
         ///
-        func text(for card: KanbanCard) -> String {
+        func text(for card: KanbanCard, actorName: String) -> String {
             switch self {
                 case .addedCard:
-                    return "Justin Reina added \(card.word) to this card"
+                    return "\(actorName) added \(card.word) to this card"
                 case .createdCard:
-                    return "Justin Reina created this card in \(card.listTitle)"
+                    return "\(actorName) created this card in \(card.listTitle)"
                 case .initialComment:
-                    return "Justin Reina: \"This is going to be surprisingly useful.\""
+                    return "\(actorName): \"This is going to be surprisingly useful.\""
             }
         }
     }
@@ -125,6 +150,8 @@ struct CardDetailView: View {
 
     let card: KanbanCard                                     /* The kanban card being displayed in detail                    */
     let availableLists: [KanbanList]                         /* Other lists that can receive this card                       */
+    let memberColors: [String: Color]                         /* Shared icon colors keyed by normalized member name           */
+    let currentUserName: String                               /* Current actor name shown in card activity                    */
     let onTitleToggle: ((KanbanCard) -> Void)?               /* Callback invoked when the card title checkbox is toggled     */
     let onMoveToList: ((Int) -> Void)?                       /* Callback invoked to move the card to a selected list         */
 
@@ -139,8 +166,9 @@ struct CardDetailView: View {
     @State private var startDate: Date?                      /* Optional start date for the selected card                    */
     @State private var dueDate: Date?                        /* Optional due date for the selected card                      */
     @State private var descriptionText: String               /* Editable description shown on this card                      */
-    @State private var activeDatePicker: DateField?          /* The date field whose calendar sheet is currently open        */
+    @State private var activeSheet: ActiveSheet?              /* The date picker or member editor currently presented        */
     @State private var comments: [KanbanComment]             /* Comments saved to this card's activity                       */
+    @State private var members: [String]                     /* Users assigned to the selected card                          */
     @State private var commentDraft = ""                     /* Text currently entered in the comment composer               */
     @State private var dismissedActivityIDs: Set<String>     /* IDs of activity entries that have been dismissed by the user */
     @State private var activityFilter: ActivityFilter = .all /* The currently selected activity filter for the card          */
@@ -156,12 +184,16 @@ struct CardDetailView: View {
     init(
         card: KanbanCard,
         availableLists: [KanbanList]           = [],        /* Other lists available as move destinations                   */
+        memberColors: [String: Color]          = [:],       /* Shared member icon colors                                     */
+        currentUserName: String                = "Justin Reina",
         onTitleToggle: ((KanbanCard) -> Void)? = nil,       /* Callback invoked when the card title checkbox is toggled     */
         onMoveToList: ((Int) -> Void)?         = nil        /* Callback invoked when the card is moved                      */
     ) {
 
         self.card           = card                                              /* The kanban card being displayed in detail                            */
         self.availableLists = availableLists                                    /* Other lists available as move destinations                           */
+        self.memberColors   = memberColors                                      /* Shared member icon colors                                            */
+        self.currentUserName = currentUserName                                 /* Current actor name shown in card activity                             */
         self.onTitleToggle  = onTitleToggle                                     /* Callback invoked when the card title checkbox is toggled             */
         self.onMoveToList   = onMoveToList                                      /* Callback invoked when the card is moved                              */
 
@@ -172,9 +204,18 @@ struct CardDetailView: View {
         _dueDate              = State(initialValue: card.dueDate)               /* Initialize the due date from the card state                          */
         _descriptionText      = State(initialValue: card.funParagraph)          /* Initialize the editable description from the card                    */
         _comments             = State(initialValue: card.comments)              /* Initialize comments from the selected card                           */
+        _members              = State(initialValue: card.members)                /* Initialize assigned members from the selected card                  */
         _dismissedActivityIDs = State(initialValue: card.dismissedActivityIDs)  /* Initialize dismissed activity IDs from the card state                */
 
         _checklists = State(initialValue: card.checklists)                      /* Initialize checklist state from the card's stored values             */
+    }
+
+    // MARK: - Member Icon Color Helper
+    private func memberIconColor(for memberName: String) -> Color {
+
+        let normalizedName = memberName.trimmingCharacters(in: .whitespacesAndNewlines).lowercased()
+
+        return memberColors[normalizedName] ?? .accentColor
     }
 
 
@@ -194,6 +235,7 @@ struct CardDetailView: View {
     private func syncCardState(
         title:          String? = nil,
         subtitle:       String? = nil,
+        members:        [String]? = nil,
         titleChecked:   Bool? = nil,
         startDate:      Date? = nil,
         dueDate:        Date? = nil,
@@ -204,6 +246,7 @@ struct CardDetailView: View {
         let nextTitleChecked = titleChecked                      ?? self.titleChecked
         let nextTitle         = title         ?? titleText
         let nextSubtitle      = subtitle      ?? (card.subtitleOverride == nil && subtitleText == card.subtitle ? nil : subtitleText)
+        let nextMembers       = members       ?? self.members
         let nextStartDate    = clearStartDate ? nil : (startDate ?? self.startDate)
         let nextDueDate      = clearDueDate   ? nil : (dueDate   ?? self.dueDate)
 
@@ -217,6 +260,7 @@ struct CardDetailView: View {
             dueDate:              nextDueDate,
             checklists:           checklists,
             comments:             comments,
+            members:              nextMembers,
             dismissedActivityIDs: dismissedActivityIDs,
             descriptionOverride:  descriptionText,
             subtitleOverride:     nextSubtitle
@@ -310,7 +354,7 @@ struct CardDetailView: View {
                 syncCardState(clearDueDate: true)
         }
 
-        activeDatePicker = nil
+        activeSheet = nil
     }
 
 
@@ -349,7 +393,7 @@ struct CardDetailView: View {
                         syncCardState(dueDate: newValue)
                 }
                 
-                activeDatePicker = nil
+                activeSheet = nil
             }
         )
     }
@@ -387,7 +431,7 @@ struct CardDetailView: View {
             Spacer()
 
             Button {
-                activeDatePicker = field
+                activeSheet = .date(field)
             } label: {
                 Text(dateLabel)
             }
@@ -419,7 +463,7 @@ struct CardDetailView: View {
     ///
     private func addChecklist(using scrollProxy: ScrollViewProxy) {
 
-        let checklist = KanbanChecklist(title: "Checklist", items: ["Item 1"])
+        let checklist = KanbanChecklist(title: "Checklist", items: [""])
 
         checklists.append(checklist)
         
@@ -868,7 +912,7 @@ struct CardDetailView: View {
 
                             ActionTile(title: "Add Checklist",  icon: "checklist", color: .green,  action: { addChecklist(using: scrollProxy) })
                             ActionTile(title: "Add Attachment", icon: "paperclip", color: .cyan,   action: {})
-                            ActionTile(title: "Members",        icon: "person.2",  color: .purple, action: {})
+                            ActionTile(title: "Members",        icon: "person.2",  color: .purple, action: { activeSheet = .members })
                         }
                     }
 
@@ -912,7 +956,41 @@ struct CardDetailView: View {
 
                         Divider()
 
-                        DetailRow(icon: "person", title: "Members", value: "Justin Reina")
+                        Button {
+                            activeSheet = .members
+                        } label: {
+                            HStack(spacing: 12) {
+                                if members.isEmpty {
+
+                                    Image(systemName: "person")
+                                        .frame(width: 22)
+                                        .foregroundStyle(.secondary)
+                                } else {
+
+                                    HStack(spacing: -5) {
+
+                                        ForEach(Array(members.enumerated()), id: \.offset) { _, member in
+                                        
+                                            Image(systemName: "person.crop.circle.fill")
+                                                .foregroundStyle(memberIconColor(for: member))
+                                        }
+                                    }
+                                    .frame(minWidth: 22, alignment: .leading)
+                                }
+
+                                Text("Members")
+                                Spacer()
+                                Text(members.isEmpty ? "Add members" : members.joined(separator: ", "))
+                                    .foregroundStyle(.secondary)
+                                    .lineLimit(1)
+                                    .truncationMode(.tail)
+                            }
+                            .font(.subheadline)
+                            .padding(.vertical, 5)
+                            .contentShape(Rectangle())
+                        }
+                        .buttonStyle(.plain)
+                        .accessibilityLabel("Edit assigned members")
                     }
 
                     //***********************************************************************************************//
@@ -957,7 +1035,10 @@ struct CardDetailView: View {
 
                         if activityFilter != .cardActivity {
                             ForEach(comments) { comment in
-                                CommentActivityRow(comment: comment) {
+                                CommentActivityRow(
+                                    comment: comment,
+                                    memberColor: memberIconColor(for: comment.author)
+                                ) {
                                     deleteComment(with: comment.id)
                                 }
                             }
@@ -965,7 +1046,10 @@ struct CardDetailView: View {
 
                         if activityFilter != .comments {
                             ForEach(GeneratedActivity.allCases.filter { !dismissedActivityIDs.contains($0.id) }) { activity in
-                                ActivityRow(text: activity.text(for: card)) {
+                                ActivityRow(
+                                    text: activity.text(for: card, actorName: currentUserName),
+                                    actorColor: memberIconColor(for: currentUserName)
+                                ) {
                                     dismissGeneratedActivity(activity)
                                 }
                             }
@@ -978,7 +1062,7 @@ struct CardDetailView: View {
                     HStack(alignment: .bottom, spacing: 10) {
                         Image(systemName: "person.crop.circle.fill")
                             .font(.title2)
-                            .foregroundStyle(.teal)
+                            .foregroundStyle(memberIconColor(for: currentUserName))
 
                         TextField("Comment...", text: $commentDraft, axis: .vertical)
                             .lineLimit(1...4)
@@ -1027,12 +1111,12 @@ struct CardDetailView: View {
                             Label("Add checklist", systemImage: "checklist")
                         }
                         Button {
-                            activeDatePicker = .start
+                            activeSheet = .date(.start)
                         } label: {
                             Label(startDate == nil ? "Add start date" : "Edit start date", systemImage: "calendar")
                         }
                         Button {
-                            activeDatePicker = .due
+                            activeSheet = .date(.due)
                         } label: {
                             Label(dueDate == nil ? "Add due date" : "Edit due date", systemImage: "calendar.badge.clock")
                         }
@@ -1095,34 +1179,198 @@ struct CardDetailView: View {
         .navigationTitle("")
         .navigationBarTitleDisplayMode(.inline)
         .navigationBarBackButtonHidden(true)
-        .sheet(item: $activeDatePicker) { field in
-            NavigationStack {
-                DatePicker(
-                    field.title,
-                    selection: dateBinding(for: field),
-                    displayedComponents: [.date]
-                )
-                .datePickerStyle(.graphical)
-                .labelsHidden()
-                .padding()
-                .navigationTitle(field.title)
-                .navigationBarTitleDisplayMode(.inline)
-                .toolbar {
-                    ToolbarItem(placement: .topBarLeading) {
-                        Button("Reset") {
-                            resetDate(for: field)
+        .sheet(item: $activeSheet) { sheet in
+            switch sheet {
+                case .date(let field):
+                    NavigationStack {
+                        DatePicker(
+                            field.title,
+                            selection: dateBinding(for: field),
+                            displayedComponents: [.date]
+                        )
+                        .datePickerStyle(.graphical)
+                        .labelsHidden()
+                        .padding()
+                        .navigationTitle(field.title)
+                        .navigationBarTitleDisplayMode(.inline)
+                        .toolbar {
+                            ToolbarItem(placement: .topBarLeading) {
+                                Button("Reset") {
+                                    resetDate(for: field)
+                                }
+                            }
+                            ToolbarItem(placement: .topBarTrailing) {
+                                Button("Done") {
+                                    activeSheet = nil
+                                }
+                            }
                         }
                     }
-                    ToolbarItem(placement: .topBarTrailing) {
-                        Button("Done") {
-                            activeDatePicker = nil
+                    .presentationDetents([.medium, .large])
+
+                case .members:
+                    CardMembersSheet(members: members, memberColors: memberColors) { updatedMembers in
+                        members = updatedMembers
+                        syncCardState(members: updatedMembers)
+                    }
+                    .presentationDetents([.medium, .large])
+            }
+        }
+        }
+    }
+}
+
+
+///
+/// Presents the names assigned to a card and lets the user maintain that list
+///
+/// @section    Purpose
+///     Provide one interface for viewing, editing, adding, and removing users assigned to a card
+///
+/// @details    Keeps draft edits local until Save, trims names, removes case-insensitive duplicates, and supports swipe-to-remove
+///
+/// @note       Member entries are stored as names or email strings; no separate user directory is required
+///
+private struct CardMembersSheet: View {
+
+    let onSave: ([String]) -> Void                  /* Callback to be invoked when the list of members is saved    */
+    let memberColors: [String: Color]               /* Shared icon colors keyed by normalized member name         */
+
+    @Environment(\.dismiss) private var dismiss     /* Dismiss action for the sheet                                */
+    @State private var members: [String]            /* Local copy of the members list for editing within the sheet */
+    @State private var memberDraft = ""             /* Current text input for adding a new member                  */
+
+    // Returns the member draft with leading and trailing whitespace removed
+    private var trimmedMemberDraft: String {
+        memberDraft.trimmingCharacters(in: .whitespacesAndNewlines)
+    }
+
+    // Determines whether the current member draft can be added to the list of members
+    private var canAddMember: Bool {
+        !trimmedMemberDraft.isEmpty && !members.contains {
+            $0.localizedCaseInsensitiveCompare(trimmedMemberDraft) == .orderedSame
+        }
+    }
+
+    // Returns a list of members with duplicates removed and whitespace trimmed
+    private var normalizedMembers: [String] {
+
+        var seenNames: Set<String> = []
+        
+        let membersToSave = canAddMember ? members + [trimmedMemberDraft] : members
+
+        return membersToSave.compactMap { member in
+            let trimmedMember = member.trimmingCharacters(in: .whitespacesAndNewlines)
+            let normalizedName = trimmedMember.lowercased()
+
+            guard !trimmedMember.isEmpty, seenNames.insert(normalizedName).inserted else {
+                return nil
+            }
+
+            return trimmedMember
+        }
+    }
+
+    /// Initializes the card members sheet with a list of members and a save callback
+    /// - Parameters:
+    ///   - members: The initial list of members assigned to the card
+    ///   - onSave: A closure to be called when the list of members is saved
+    init(members: [String], memberColors: [String: Color], onSave: @escaping ([String]) -> Void) {
+        self.onSave = onSave
+        self.memberColors = memberColors
+        _members = State(initialValue: members)
+    }
+
+    ///
+    /// @fcn        CardMembersSheet.addMember
+    /// @brief      Add the current member draft to the assigned-user list
+    /// @details    Appends the trimmed draft and clears the input when it is non-empty and not already assigned
+    ///
+    /// @return     (Void) updates the sheet's member draft and local assignment list
+    ///
+    /// @pre        memberDraft contains the current text entered in the Add user field
+    /// @post       A valid unique name is appended and memberDraft is cleared; invalid or duplicate drafts are unchanged
+    ///
+    /// @note       Duplicate detection is case-insensitive
+    ///
+    private func addMember() {
+        
+        guard canAddMember else { return }
+
+        members.append(trimmedMemberDraft)
+        memberDraft = ""
+    }
+
+    var body: some View {
+
+        NavigationStack {
+
+            List {
+
+                Section("Assigned users") {
+
+                    if members.isEmpty {
+                        Text("No users assigned")
+                            .foregroundStyle(.secondary)
+                    }
+
+                    ForEach(members.indices, id: \.self) { index in
+
+                        HStack(spacing: 10) {
+
+                            Image(systemName: "person.crop.circle")
+                                .foregroundStyle(memberColors[members[index].lowercased()] ?? .accentColor)
+
+                            TextField("Name or email", text: $members[index])
+                                .textInputAutocapitalization(.never)
+                        }
+                        .swipeActions(edge: .trailing, allowsFullSwipe: true) {
+
+                            Button(role: .destructive) {
+                                members.remove(at: index)
+
+                            } label: {
+                                Label("Remove", systemImage: "trash")
+                            }
                         }
                     }
                 }
+
+                Section("Add user") {
+
+                    HStack {
+
+                        TextField("Name or email", text: $memberDraft)
+                            .textInputAutocapitalization(.never)
+                            .onSubmit(addMember)
+
+                        Button(action: addMember) {
+                            Image(systemName: "plus.circle.fill")
+                        }
+                        .disabled(!canAddMember)
+                        .accessibilityLabel("Add member")
+                    }
+                }
             }
-            .presentationDetents([.medium, .large])
+            .navigationTitle("Card members")
+            .navigationBarTitleDisplayMode(.inline)
+            .toolbar {
+                ToolbarItem(placement: .cancellationAction) {
+
+                    Button("Cancel") {
+                        dismiss()
+                    }
+                }
+                ToolbarItem(placement: .confirmationAction) {
+                    
+                    Button("Save") {
+                        onSave(normalizedMembers)
+                        dismiss()
+                    }
+                }
+            }
         }
-        }
+        .presentationDragIndicator(.visible)
     }
 }
 
@@ -1590,7 +1838,8 @@ struct ChecklistItemRow: View {
 ///
 struct ActivityRow: View {
 
-    let text: String    /* The main text content of the activity row */
+    let text: String       /* The main text content of the activity row */
+    let actorColor: Color  /* The icon color for the activity actor      */
     let onDelete: () -> Void
 
 
@@ -1607,7 +1856,7 @@ struct ActivityRow: View {
             HStack(alignment: .top, spacing: 10) {
 
                 Image(systemName: "person.crop.circle.fill")
-                    .foregroundStyle(.teal)
+                    .foregroundStyle(actorColor)
 
                 VStack(alignment: .leading, spacing: 3) {
 
@@ -1628,6 +1877,7 @@ struct ActivityRow: View {
 struct CommentActivityRow: View {
 
     let comment: KanbanComment      /* The comment data rendered by the row           */
+    let memberColor: Color          /* The assigned icon color for the comment author  */
     let onDelete: () -> Void        /* The action invoked when the comment is deleted */
 
     var body: some View {
@@ -1636,7 +1886,7 @@ struct CommentActivityRow: View {
             HStack(alignment: .top, spacing: 10) {
 
                 Image(systemName: "person.crop.circle.fill")
-                    .foregroundStyle(.teal)
+                    .foregroundStyle(memberColor)
 
                 VStack(alignment: .leading, spacing: 3) {
 

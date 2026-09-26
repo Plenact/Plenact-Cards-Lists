@@ -30,6 +30,7 @@ struct KanbanCard: Identifiable, Hashable {
     var dueDate:        Date?               /* Optional due date for the card                     */
     var checklists:     [KanbanChecklist]   /* List of checklists associated with the card        */
     var comments:       [KanbanComment]     /* Comments posted to the card's activity             */
+    var members:        [String]            /* User names assigned to the card                    */
     var dismissedActivityIDs: Set<String>   /* Generated activity entries removed by the user     */
     var descriptionOverride: String?        /* Optional user-edited description                   */
     var subtitleOverride: String?           /* Optional user-edited board subtitle                */
@@ -75,7 +76,7 @@ struct KanbanCard: Identifiable, Hashable {
     /// @pre        All values should be valid for the board's deterministic sample data
     /// @post       The card contains the provided identity, title text, and checked state
     ///
-    init(id: Int, word: String, listTitle: String, isDivider: Bool = false, isTitleChecked: Bool = false, startDate: Date? = nil, dueDate: Date? = nil, checklists: [KanbanChecklist]? = nil, comments: [KanbanComment] = [], dismissedActivityIDs: Set<String> = [], descriptionOverride: String? = nil, subtitleOverride: String? = nil) {
+    init(id: Int, word: String, listTitle: String, isDivider: Bool = false, isTitleChecked: Bool = false, startDate: Date? = nil, dueDate: Date? = nil, checklists: [KanbanChecklist]? = nil, comments: [KanbanComment] = [], members: [String] = [], dismissedActivityIDs: Set<String> = [], descriptionOverride: String? = nil, subtitleOverride: String? = nil) {
 
         self.id                   = id                      /* Stable numeric identifier for the card             */
         self.word                 = word                    /* Display word shown as the card's title             */
@@ -85,6 +86,7 @@ struct KanbanCard: Identifiable, Hashable {
         self.startDate            = startDate               /* Optional start date for the card                   */
         self.dueDate              = dueDate                 /* Optional due date for the card                     */
         self.comments             = comments                /* Array of comments associated with the card         */
+        self.members              = members                 /* Names of users assigned to the card                */
         self.dismissedActivityIDs = dismissedActivityIDs    /* Set of activity IDs that were dismissed by user    */
         self.descriptionOverride  = descriptionOverride     /* Optional user-edited description                   */
         self.subtitleOverride     = subtitleOverride        /* Optional user-edited subtitle                      */
@@ -319,7 +321,8 @@ enum SampleData {
                                       id:             globalIndex,
                                       word:           words[globalIndex % words.count],
                                       listTitle:      title,
-                                      isTitleChecked: globalIndex % 3 == 0
+                                                                            isTitleChecked: globalIndex % 3 == 0,
+                                                                            members:        ["Justin Reina"]
                                      )
 
                 globalIndex += 1

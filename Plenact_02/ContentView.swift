@@ -26,8 +26,134 @@ struct BoardDisplaySettings {
 ///
 struct ContentView: View {
 
-    @State private var lists: [KanbanList] = SampleData.lists
-    @State private var displaySettings     = BoardDisplaySettings()
+    @State private var lists: [KanbanList]           = SampleData.lists         /* Kanban board lists                               */
+    @State private var displaySettings               = BoardDisplaySettings()   /* Board display settings                           */
+    @State private var memberColors: [String: Color] = [:]                      /* Mapping of member names to their assigned colors */
+    @State private var currentUserName               = "Justin Reina"           /* Current user's name                              */
+
+
+    ///
+    /// @fcn        ContentView.activeMembers
+    /// @brief      Return unique users assigned to active cards
+    /// @details    Traverses cards in board order, excludes divider items, trims surrounding whitespace,
+    ///             and retains the first occurrence of each member name using case-insensitive matching
+    ///
+    /// @return     ([String]) ordered member names currently assigned to non-divider cards
+    ///
+    /// @pre        lists contains the current in-memory board state
+    /// @post       No board data is modified; duplicate and empty names are omitted from the result
+    ///
+    private var activeMembers: [String] {
+
+        var seenMembers: Set<String> = []       /* Track unique members to avoid duplicates */
+
+        return lists
+            .flatMap(\.cards)
+            .filter { !$0.isSectionDivider }
+            .flatMap(\.members)
+            .compactMap { member in
+
+                let trimmedMember    = member.trimmingCharacters(in: .whitespacesAndNewlines)   /* Trim whitespace and newlines from the member name         */
+                let normalizedMember = trimmedMember.lowercased()                               /* Normalize the member name for case-insensitive comparison */
+
+                guard !trimmedMember.isEmpty, seenMembers.insert(normalizedMember).inserted else {
+                    return nil
+                }
+
+                return trimmedMember
+            }
+    }
+
+    ///
+    /// @fcn        ContentView.renameMember(from:to:)
+    /// @brief      Rename a member across the board
+    /// @details    Replaces matching card assignments and comment authors, updates the current-user name
+    ///             when applicable, and migrates the member's icon color to the new normalized key
+    ///
+    /// @param[in]  currentName  Existing member name to replace
+    /// @param[in]  proposedName Proposed new name; surrounding whitespace is trimmed
+    ///
+    /// @return     (Void) updates card assignments, authored comments, current-user display, and color mapping
+    ///
+    /// @pre        currentName identifies the member being renamed
+    /// @post       Matching names are replaced; duplicate assignments within each card are removed
+    ///
+    /// @note       An empty proposed name is ignored; if the new name already has a color, that color is retained
+    ///
+    private func renameMember(from currentName: String, to proposedName: String) {
+
+        let updatedName = proposedName.trimmingCharacters(in: .whitespacesAndNewlines)
+
+        guard !updatedName.isEmpty else { return }
+
+        let currentKey = currentName.lowercased()       /* Normalized key for the current member name */
+        let updatedKey = updatedName.lowercased()       /* Normalized key for the updated member name */    
+
+        for listIndex in lists.indices {
+
+            for cardIndex in lists[listIndex].cards.indices {
+
+                var updatedCard            = lists[listIndex].cards[cardIndex]  /* Copy of the current card for in-place updates     */
+                var seenNames: Set<String> = []                                 /* Track unique member names within the current card */
+
+                updatedCard.members = updatedCard.members.compactMap { member in
+
+                    let trimmedMember  = member.trimmingCharacters(in: .whitespacesAndNewlines)                 /* Trim whitespace and newlines from the member name      */
+                    let renamedMember  = trimmedMember.lowercased() == currentKey ? updatedName : trimmedMember /* Determine the new member name based on the current key */
+                    let normalizedName = renamedMember.lowercased()                                             /* Normalized key for the renamed member                  */
+
+                    guard !renamedMember.isEmpty, seenNames.insert(normalizedName).inserted else {
+                        return nil
+                    }
+
+                    return renamedMember
+                }
+
+                updatedCard.comments = updatedCard.comments.map { comment in
+
+                    guard comment.author.trimmingCharacters(in: .whitespacesAndNewlines).lowercased() == currentKey else {
+                        return comment
+                    }
+
+                    return KanbanComment(
+                        id:        comment.id,
+                        author:    updatedName,
+                        body:      comment.body,
+                        createdAt: comment.createdAt
+                    )
+                }
+
+                lists[listIndex].cards[cardIndex] = updatedCard
+            }
+        }
+
+        if currentUserName.trimmingCharacters(in: .whitespacesAndNewlines).lowercased() == currentKey {
+            currentUserName = updatedName
+        }
+
+        if currentKey != updatedKey, let existingColor = memberColors.removeValue(forKey: currentKey) {
+            memberColors[updatedKey] = memberColors[updatedKey] ?? existingColor
+        }
+    }
+
+
+    ///
+    /// @fcn        ContentView.setMemberColor(_:color:)
+    /// @brief      Store the shared icon color for a member
+    /// @details    Writes the selected color under the member's lowercased name so all matching icons resolve consistently
+    ///
+    /// @param[in]  memberName  Name of the member whose icon color is being changed
+    /// @param[in]  color       New color selected for that member
+    ///
+    /// @return     (Void) updates the board-level member color mapping
+    ///
+    /// @pre        memberName identifies an active member
+    /// @post       Views using the normalized member key receive the selected color
+    ///
+    private func setMemberColor(_ memberName: String, color: Color) {
+        memberColors[memberName.lowercased()] = color
+    }
+
 
     ///
     /// @fcn        ContentView.addList
@@ -204,6 +330,7 @@ struct ContentView: View {
                 dueDate:              card.dueDate,
                 checklists:           card.checklists,
                 comments:             card.comments,
+                members:              card.members,
                 dismissedActivityIDs: card.dismissedActivityIDs,
                 descriptionOverride:  card.descriptionOverride,
                 subtitleOverride:     card.subtitleOverride
@@ -454,7 +581,14 @@ struct ContentView: View {
 
                     VStack(spacing: 0) {
 
-                        BoardHeader(settings: $displaySettings, onAddList: addList)
+                        BoardHeader(
+                            settings:         $displaySettings,
+                            activeMembers:    activeMembers,
+                            memberColors:     memberColors,
+                            onRenameMember:   renameMember,
+                            onSetMemberColor: setMemberColor,
+                            onAddList:        addList
+                        )
 
                         ScrollView(.horizontal, showsIndicators: false) {
 
@@ -505,10 +639,12 @@ struct ContentView: View {
                     availableLists: lists.filter { list in
                         !list.cards.contains(where: { $0.id == card.id })
                     },
-                    onTitleToggle: { updatedCard in
+                    memberColors:    memberColors,
+                    currentUserName: currentUserName,
+                    onTitleToggle:   { updatedCard in
                         updateCard(updatedCard)
                     },
-                    onMoveToList: { destinationListID in
+                    onMoveToList:    { destinationListID in
                         moveCard(card.id, toListID: destinationListID)
                     }
                 )
@@ -529,6 +665,10 @@ struct ContentView: View {
 struct BoardHeader: View {
 
     @Binding var settings: BoardDisplaySettings     /* Board display settings                              */
+    let activeMembers: [String]                     /* Unique users assigned to active cards               */
+    let memberColors: [String: Color]               /* Icon colors keyed by normalized member name         */
+    let onRenameMember: (String, String) -> Void    /* Rename a member across all card assignments         */
+    let onSetMemberColor: (String, Color) -> Void   /* Update a member's shared icon color                 */
 
     let onAddList: () -> Void                       /* Callback for adding a new list                      */
 
@@ -571,10 +711,16 @@ struct BoardHeader: View {
             .accessibilityLabel("Board options")
         }
         .padding(.horizontal, 18)
-        .padding(.top, 12)
-        .padding(.bottom, 10)
+        .padding(.top,        12)
+        .padding(.bottom,     10)
         .sheet(isPresented: $showingSettings) {
-            BoardSettingsView(settings: $settings)
+            BoardSettingsView(
+                settings:         $settings,
+                activeMembers:    activeMembers,
+                memberColors:     memberColors,
+                onRenameMember:   onRenameMember,
+                onSetMemberColor: onSetMemberColor
+            )
         }
     }
 }
@@ -587,8 +733,21 @@ struct BoardHeader: View {
 ///
 private struct BoardSettingsView: View {
 
-    @Binding var settings: BoardDisplaySettings     /* Bound to the board's display preferences */
-    @Environment(\.dismiss) private var dismiss     /* Dismiss action for the settings sheet    */
+    @Binding var settings: BoardDisplaySettings     /* Bound to the board's display preferences       */
+    let activeMembers: [String]                     /* Active assigned users in board order            */
+    let memberColors: [String: Color]               /* Member icon colors keyed by normalized name     */
+    let onRenameMember: (String, String) -> Void    /* Rename a member across all assigned cards       */
+    let onSetMemberColor: (String, Color) -> Void   /* Update a member's shared icon color             */
+    @Environment(\.dismiss) private var dismiss     /* Dismiss action for the settings sheet           */
+    @State private var editingMember: String?       /* The member currently being edited               */
+    @State private var memberNameDraft  = ""        /* Draft of the member's new name                  */
+    @State private var isRenamingMember = false     /* Whether the user is currently renaming a member */
+
+    @State private var selectedMemberColor: MemberColorTarget?  /* The member whose color is currently being edited */
+
+    private var trimmedMemberNameDraft: String {
+        memberNameDraft.trimmingCharacters(in: .whitespacesAndNewlines)
+    }
 
     ///
     /// @fcn        BoardSettingsView.body
@@ -611,6 +770,53 @@ private struct BoardSettingsView: View {
                     Toggle("Comment counts",     isOn: $settings.showCommentCounts)
                     Toggle("Due-date badges",    isOn: $settings.showDueDateBadges)
                 }
+
+                Section("Members") {
+
+                    if activeMembers.isEmpty {
+
+                        Text("No active members")
+                            .foregroundStyle(.secondary)
+
+                    } else {
+
+                        ForEach(Array(activeMembers.enumerated()), id: \.offset) { _, member in
+
+                            HStack(spacing: 12) {
+
+                                let memberColor = memberColors[member.lowercased()] ?? .accentColor     /* Fallback to accent color if no custom color is set */
+
+                                Button {
+                                    selectedMemberColor = MemberColorTarget(member: member, color: memberColor)
+
+                                } label: {
+
+                                    Image(systemName: "person.crop.circle.fill")
+                                        .font(.title3)
+                                        .foregroundStyle(memberColor)
+                                        .frame(width: 36, height: 36)
+                                        .contentShape(Rectangle())
+
+                                }
+                                .buttonStyle(.plain)
+                                .accessibilityLabel("Change icon color for \(member)")
+
+                                Button {
+                                    editingMember    = member
+                                    memberNameDraft  = member
+                                    isRenamingMember = true
+
+                                } label: {
+                                    Text(member)
+                                        .frame(maxWidth: .infinity, alignment: .leading)
+                                        .contentShape(Rectangle())
+                                }
+                                .buttonStyle(.plain)
+                                .accessibilityLabel("Edit \(member)")
+                            }
+                        }
+                    }
+                }
             }
             .navigationTitle("Board Settings")
             .navigationBarTitleDisplayMode(.inline)
@@ -621,9 +827,105 @@ private struct BoardSettingsView: View {
                     }
                 }
             }
+            .alert("Edit member", isPresented: $isRenamingMember) {
+
+                TextField("Name or email", text: $memberNameDraft)
+                    .textInputAutocapitalization(.never)
+
+                Button("Cancel", role: .cancel) {}
+
+                Button("Save") {
+                    guard let editingMember else { return }
+
+                    onRenameMember(editingMember, trimmedMemberNameDraft)
+                }
+                .disabled(trimmedMemberNameDraft.isEmpty)
+            } message: {
+
+                Text("This updates the member name on every assigned card.")
+            }
+            .sheet(item: $selectedMemberColor) { target in
+
+                MemberColorEditorSheet(memberName: target.member, initialColor: target.color) { color in
+                    onSetMemberColor(target.member, color)
+                }
+            }
         }
         .presentationDetents([.medium, .large])
         .presentationDragIndicator(.visible)
+    }
+}
+
+
+///
+/// Carries the selected member and current color while the color editor sheet is presented
+///
+/// @section    Purpose
+///     Provide a stable identifiable sheet item containing the values needed to edit a member icon color
+///
+/// @details    The member's lowercased name is used as the sheet identity, and the current color seeds the editor
+///
+/// @note       This is transient presentation state; saving is handled by MemberColorEditorSheet
+///
+private struct MemberColorTarget: Identifiable {
+
+    let member: String                          /* The name of the member whose color is being edited */    
+    let color: Color                            /* The current color of the member's icon             */
+
+    var id: String { member.lowercased() }      /* Use the lowercased member name as the unique identifier for the sheet */
+}
+
+
+///
+/// Presents the system color picker for one member's icon
+///
+/// @section    Purpose
+///     Let the user preview, change, save, or cancel a member's shared icon color
+///
+/// @details    Holds the selected color locally until Save invokes onSave; Cancel dismisses without applying changes
+///
+/// @note       Opacity selection is disabled so the icon remains fully visible
+///
+private struct MemberColorEditorSheet: View {
+
+    let memberName: String              /* The name of the member whose color is being edited         */
+    let onSave: (Color) -> Void         /* The closure to call when the user saves the selected color */
+
+    @Environment(\.dismiss) private var dismiss
+    @State private var selectedColor: Color
+
+    init(memberName: String, initialColor: Color, onSave: @escaping (Color) -> Void) {
+        self.memberName = memberName
+        self.onSave     = onSave
+        _selectedColor  = State(initialValue: initialColor)
+    }
+
+    var body: some View {
+
+        NavigationStack {
+
+            Form {
+                Section(memberName) {
+                    ColorPicker("Icon color", selection: $selectedColor, supportsOpacity: false)
+                }
+            }
+            .navigationTitle("Member icon")
+            .navigationBarTitleDisplayMode(.inline)
+            .toolbar {
+                ToolbarItem(placement: .cancellationAction) {
+                    Button("Cancel") {
+                        dismiss()
+                    }
+                }
+                ToolbarItem(placement: .confirmationAction) {
+                    Button("Save") {
+                        onSave(selectedColor)
+                        dismiss()
+                    }
+                }
+            }
+        }
+        .presentationDetents([.medium])
     }
 }
 
@@ -1166,6 +1468,7 @@ struct KanbanCardView: View {
             dueDate:              card.dueDate,
             checklists:           card.checklists,
             comments:             card.comments,
+            members:              card.members,
             dismissedActivityIDs: card.dismissedActivityIDs,
             descriptionOverride:  description,
             subtitleOverride:     subtitle
