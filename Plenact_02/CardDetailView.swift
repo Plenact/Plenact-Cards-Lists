@@ -5,8 +5,26 @@
 //
 // @notes      Supporting views are intentionally small and reusable within the detail screen
 //
+// @section    Opens
+//     Modularize into separate files
+//
 // --------------------------------------------------------------------------------------------------
 import SwiftUI
+
+
+/// Identifies a checklist's requested position within its card.
+///
+/// @section    Purpose
+///     Represent adjacent and absolute checklist move operations
+///
+/// @note   Boundary actions are disabled in ChecklistBlock when no movement is possible
+///
+enum ChecklistMoveDirection {
+    case top
+    case up
+    case down
+    case bottom
+}
 
 
 // -------------------------------------- MARK: - Card Detail View ------------------------------ //
@@ -380,6 +398,81 @@ struct CardDetailView: View {
         )
         syncCardState()
     }
+
+
+    ///
+    /// @fcn        CardDetailView.toggleAllItems(in:)
+    /// @brief      Check every item or clear all checks in one checklist
+    /// @details    Clears completion when all non-empty items are already checked; otherwise checks every item
+    ///
+    /// @param[in]  checklistID  Stable identifier of the checklist to update
+    ///
+    /// @return     (Void) updates item completion state and synchronizes the card
+    ///
+    /// @pre        checklistID identifies a checklist on the current card
+    /// @post       All items are checked, or all are unchecked when they were already all checked
+    ///
+    private func toggleAllItems(in checklistID: UUID) {
+
+        guard let checklistIndex = checklists.firstIndex(where: { $0.id == checklistID }) else { return }
+
+        let checklist            = checklists[checklistIndex]                                                                   /* current checklist               */
+        let allItemsAreCompleted = !checklist.items.isEmpty && checklist.completedItemIndices.count == checklist.items.count    /* all non-empty items are checked */
+        let completedIndices     = allItemsAreCompleted ? Set<Int>() : Set(checklist.items.indices)                             /* new completion state            */
+
+        checklists[checklistIndex] = KanbanChecklist(
+            id:                   checklist.id,
+            title:                checklist.title,
+            items:                checklist.items,
+            completedItemIndices: completedIndices
+        )
+
+        syncCardState()
+    }
+
+
+    ///
+    /// @fcn        CardDetailView.moveChecklist(with:direction:)
+    /// @brief      Move a checklist to an adjacent or absolute position
+    /// @details    Removes the selected checklist and reinserts it at the requested position
+    ///
+    /// @param[in]  checklistID  Stable identifier of the checklist to move
+    /// @param[in]  direction    Requested destination from ChecklistMoveDirection
+    ///
+    /// @return     (Void) updates checklist order and synchronizes the card
+    ///
+    /// @pre        checklistID identifies a checklist on the current card
+    /// @post       The checklist occupies the requested position; boundary and single-checklist moves leave order unchanged
+    ///
+    private func moveChecklist(with checklistID: UUID, direction: ChecklistMoveDirection) {
+
+        guard let sourceIndex = checklists.firstIndex(where: { $0.id == checklistID }),
+              checklists.count > 1 else {
+            return
+        }
+
+        let destinationIndex: Int
+
+        switch direction {
+            case .top:
+                destinationIndex = 0
+            case .up:
+                destinationIndex = max(sourceIndex - 1, 0)
+            case .down:
+                destinationIndex = min(sourceIndex + 1, checklists.count - 1)
+            case .bottom:
+                destinationIndex = checklists.count - 1
+        }
+
+        guard sourceIndex != destinationIndex else { return }
+
+        let movedChecklist = checklists.remove(at: sourceIndex)
+
+        checklists.insert(movedChecklist, at: destinationIndex)
+
+        syncCardState()
+    }
+
     
     ///
     /// @brief      Append a new item to a checklist
@@ -550,6 +643,9 @@ struct CardDetailView: View {
     ///
     @ViewBuilder
     private func checklistBlock(for checklist: KanbanChecklist) -> some View {
+
+        let checklistIndex = checklists.firstIndex(where: { $0.id == checklist.id }) ?? 0
+
         ChecklistBlock(
             checklist: checklist,
             onDelete: {
@@ -570,6 +666,14 @@ struct CardDetailView: View {
             onRename: { title in
                 renameChecklist(with: checklist.id, to: title)
             },
+            onToggleAllItems: {
+                toggleAllItems(in: checklist.id)
+            },
+            onMove: { direction in
+                moveChecklist(with: checklist.id, direction: direction)
+            },
+            canMoveUp: checklistIndex > 0,
+            canMoveDown: checklistIndex < checklists.count - 1,
             focusFirstItem: checklist.id == checklistToFocus,
             onFirstItemFocused: {
                 checklistToFocus = nil
@@ -1085,12 +1189,48 @@ struct ChecklistBlock: View {
     let onUpdateItem: (Int, String) -> Void /* The action invoked when item text is edited                             */
     let onDeleteItem: (Int) -> Void         /* The action invoked when an item is deleted                              */
     let onRename: (String) -> Void          /* The action invoked when the checklist title is renamed                  */
+    let onToggleAllItems: () -> Void        /* The action invoked when all items are toggled                           */
+    let onMove: (ChecklistMoveDirection) -> Void /* The action invoked when the checklist is moved                     */
+    let canMoveUp: Bool                     /* Whether the checklist can be moved up in the list                       */
+    let canMoveDown: Bool                   /* Whether the checklist can be moved down in the list                     */
     let focusFirstItem: Bool                /* Whether the first item should be focused when the checklist is rendered */
     let onFirstItemFocused: () -> Void      /* The action invoked when the first item receives focus                   */
 
     @State private var isRenaming = false   /* Whether the checklist title is currently being renamed                  */
     @State private var titleDraft = ""      /* The draft text for the checklist title being edited                     */
+    @State private var hideCompletedItems = false
 
+    ///
+    /// @fcn        ChecklistBlock.allItemsAreCompleted
+    /// @brief      Determine whether every item in the checklist is complete
+    /// @details    Requires a non-empty checklist and a completion entry for each item
+    ///
+    /// @return     (Bool) true when all checklist items are complete
+    ///
+    /// @pre        Checklist items and completion indices represent the current checklist state
+    /// @post       No checklist state is modified
+    ///
+    private var allItemsAreCompleted: Bool {
+        /// Check if all items in the checklist are completed
+        !checklist.items.isEmpty && checklist.completedItemIndices.count == checklist.items.count
+    }
+
+    ///
+    /// @fcn        ChecklistBlock.visibleItems
+    /// @brief      Return checklist items visible under the current display filter
+    /// @details    Preserves each item's original index while omitting completed items when Hide Completed is enabled
+    ///
+    /// @return     ([(offset: Int, element: String)]) visible item and original-index pairs
+    ///
+    /// @pre        Checklist data and Hide Completed state are current
+    /// @post       Checklist data and completion state remain unchanged
+    ///
+    private var visibleItems: [(offset: Int, element: String)] {
+        /// Filter the checklist items based on the hideCompletedItems flag
+        checklist.items.enumerated().filter { item in
+            !hideCompletedItems || !checklist.completedItemIndices.contains(item.offset)
+        }
+    }
 
     ///
     /// @brief      Build the checklist group
@@ -1106,6 +1246,12 @@ struct ChecklistBlock: View {
 
                 Text(checklist.title)
                     .font(.subheadline.weight(.semibold))
+                    .contentShape(Rectangle())
+                    .onLongPressGesture(minimumDuration: 0.5) {
+                        titleDraft = checklist.title
+                        isRenaming = true
+                    }
+                    .accessibilityHint("Touch and hold to rename this checklist")
 
                 Spacer()
 
@@ -1114,6 +1260,39 @@ struct ChecklistBlock: View {
                     .foregroundStyle(.secondary)
 
                 Menu {
+                    Toggle("Hide Completed", isOn: $hideCompletedItems)
+
+                    Button {
+                        onToggleAllItems()
+                    } label: {
+                        Label(allItemsAreCompleted ? "Uncheck All" : "Check All", systemImage: allItemsAreCompleted ? "square" : "checkmark.square")
+                    }
+                    .disabled(checklist.items.isEmpty)
+
+                    Divider()
+
+                    Button("Move to the Top", systemImage: "arrow.up.to.line") {
+                        onMove(.top)
+                    }
+                    .disabled(!canMoveUp)
+
+                    Button("Move Up", systemImage: "arrow.up") {
+                        onMove(.up)
+                    }
+                    .disabled(!canMoveUp)
+
+                    Button("Move Down", systemImage: "arrow.down") {
+                        onMove(.down)
+                    }
+                    .disabled(!canMoveDown)
+
+                    Button("Move to the Bottom", systemImage: "arrow.down.to.line") {
+                        onMove(.bottom)
+                    }
+                    .disabled(!canMoveDown)
+
+                    Divider()
+
                     Button {
                         titleDraft = checklist.title
                         isRenaming = true
@@ -1133,24 +1312,24 @@ struct ChecklistBlock: View {
             }
             .padding(.bottom, 6)
 
-            ForEach(Array(checklist.items.enumerated()), id: \.offset) { index, item in
+            ForEach(visibleItems, id: \.offset) { entry in
 
                 ChecklistItemRow(
-                    item: item,
-                    isCompleted: checklist.completedItemIndices.contains(index),
+                    item: entry.element,
+                    isCompleted: checklist.completedItemIndices.contains(entry.offset),
 
                     onToggle: {
-                        onToggleItem(index)
+                        onToggleItem(entry.offset)
                     },
 
                     onUpdate: { text in
-                        onUpdateItem(index, text)
+                        onUpdateItem(entry.offset, text)
                     },
 
                     onDelete: {
-                        onDeleteItem(index)
+                        onDeleteItem(entry.offset)
                     },
-                    shouldFocus: focusFirstItem && index == 0,
+                    shouldFocus: focusFirstItem && entry.offset == 0,
                     onFocusHandled: onFirstItemFocused
                 )
             }
