@@ -953,13 +953,15 @@ struct CardDetailView: View {
                     //***********************************************************************************************//
                     DetailSection(title: "Details") {
 
-                        dateRow(for: .start)
+                        if startDate != nil {
+                            dateRow(for: .start)
+                            Divider()
+                        }
 
-                        Divider()
-
-                        dateRow(for: .due)
-
-                        Divider()
+                        if dueDate != nil {
+                            dateRow(for: .due)
+                            Divider()
+                        }
 
                         DetailRow(icon: "tag", title: "Labels", value: "Planning")
 
