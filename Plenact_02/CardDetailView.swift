@@ -40,7 +40,9 @@ enum ChecklistMoveDirection {
 struct CardDetailView: View {
 
     // -------------------------------------- MARK: - Date Field Enum ------------------------------- //
-    private enum DateField: String, Identifiable {
+
+    private enum DateField: String, Identifiable, Equatable {
+
         case start      /* Start date field for the card */
         case due        /* Due date field for the card   */
 
@@ -350,6 +352,60 @@ struct CardDetailView: View {
                 activeDatePicker = nil
             }
         )
+    }
+
+
+    ///
+    /// @fcn        CardDetailView.dateRow(for:)
+    /// @brief      Build one start-date or due-date row
+    /// @details    Opens the date picker when tapped and enables swipe-to-remove only while a date is set
+    ///
+    /// @param[in]  field  Date field represented by this row
+    ///
+    /// @return     (some View) date row with the appropriate add, edit, and removal actions
+    ///
+    /// @pre        field is either the card's start date or due date
+    /// @post       Rendering the row does not modify the stored date
+    ///
+    @ViewBuilder
+    private func dateRow(for field: DateField) -> some View {
+
+        let currentDate = field == .start ? startDate : dueDate
+        let iconName    = field == .start ? "calendar" : "calendar.badge.clock"
+
+        let dateLabel = currentDate.map { $0.formatted(date: .abbreviated, time: .omitted) } ?? "Add date"
+        let fieldName = field.title.lowercased()
+
+        let row = HStack(alignment: .center) {
+
+            Image(systemName: iconName)
+                .foregroundStyle(.secondary)
+
+            Text(field.title)
+                .font(.body)
+
+            Spacer()
+
+            Button {
+                activeDatePicker = field
+            } label: {
+                Text(dateLabel)
+            }
+            .buttonStyle(.plain)
+            .accessibilityLabel("\(currentDate == nil ? "Add" : "Edit") \(fieldName)")
+        }
+
+        if currentDate != nil {
+            
+            ActivitySwipeRow(
+                onDelete: { resetDate(for: field) },
+                deletionAccessibilityLabel: "Remove \(fieldName)"
+            ) {
+                row
+            }
+        } else {
+            row
+        }
     }
 
 
@@ -810,12 +866,12 @@ struct CardDetailView: View {
                                 Button {
                                     activeDatePicker = .start
                                 } label: {
-                                    Label("Set start date", systemImage: "calendar")
+                                    Label(startDate == nil ? "Add start date" : "Edit start date", systemImage: "calendar")
                                 }
                                 Button {
                                     activeDatePicker = .due
                                 } label: {
-                                    Label("Set due date", systemImage: "calendar.badge.clock")
+                                    Label(dueDate == nil ? "Add due date" : "Edit due date", systemImage: "calendar.badge.clock")
                                 }
                                 Button {
                                     focusedField = .comment
@@ -897,44 +953,11 @@ struct CardDetailView: View {
                     //***********************************************************************************************//
                     DetailSection(title: "Details") {
 
-                        HStack(alignment: .center) {
-                            Image(systemName: "calendar")
-                                .foregroundStyle(.secondary)
-
-                            Text("Start date")
-                            
-                                .font(.body)
-                            Spacer()
-
-                            Button {
-                                activeDatePicker = .start
-                            } label: {
-                                Text(startDate.map { $0.formatted(date: .abbreviated, time: .omitted) } ?? "Today")
-                            }
-                            .buttonStyle(.plain)
-                            .accessibilityLabel("Edit start date")
-                        }
+                        dateRow(for: .start)
 
                         Divider()
 
-                        HStack(alignment: .center) {
-
-                            Image(systemName: "calendar.badge.clock")
-                                .foregroundStyle(.secondary)
-
-                            Text("Due date")
-                                .font(.body)
-
-                            Spacer()
-
-                            Button {
-                                activeDatePicker = .due
-                            } label: {
-                                Text(dueDate.map { $0.formatted(date: .abbreviated, time: .omitted) } ?? "Tomorrow")
-                            }
-                            .buttonStyle(.plain)
-                            .accessibilityLabel("Edit due date")
-                        }
+                        dateRow(for: .due)
 
                         Divider()
 
@@ -1128,10 +1151,10 @@ struct DetailSection<Content: View>: View {
     /// @brief      Initialize a detail section
     /// @details    Stores the section title, optional trailing symbol/action, and view-builder content
     ///
-    /// @param[in]  title       Display title for the section
-    /// @param[in]  trailing    Optional SF Symbol name shown at the trailing edge
-    /// @param[in]  trailingAction Optional action invoked by the trailing symbol
-    /// @param[in]  content     Content rendered below the section heading
+    /// @param[in]  title           Display title for the section
+    /// @param[in]  trailing        Optional SF Symbol name shown at the trailing edge
+    /// @param[in]  trailingAction  Optional action invoked by the trailing symbol
+    /// @param[in]  content         Content rendered below the section heading
     ///
     /// @return     (DetailSection) configured detail section
     ///
@@ -1643,8 +1666,19 @@ struct CommentActivityRow: View {
     struct ActivitySwipeRow<Content: View>: View {
 
         let onDelete: () -> Void                            /* The action invoked when the row is deleted     */
+        let deletionAccessibilityLabel: String              /* Accessibility label for the swipe action       */
         @ViewBuilder let content: () -> Content             /* The content view rendered inside the swipe row */
         @State private var horizontalOffset: CGFloat = 0    /* The current horizontal offset of the swipe row */
+
+        init(
+            onDelete: @escaping () -> Void,
+            deletionAccessibilityLabel: String = "Delete activity",
+            @ViewBuilder content: @escaping () -> Content
+        ) {
+            self.onDelete = onDelete
+            self.deletionAccessibilityLabel = deletionAccessibilityLabel
+            self.content = content
+        }
 
         var body: some View {
 
@@ -1659,7 +1693,7 @@ struct CommentActivityRow: View {
                         .background(.red)
                 }
                 .buttonStyle(.plain)
-                .accessibilityLabel("Delete activity")
+                .accessibilityLabel(deletionAccessibilityLabel)
 
                 content()
                     .padding(.vertical, 7)
