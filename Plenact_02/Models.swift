@@ -30,6 +30,7 @@ struct KanbanCard: Identifiable, Hashable {
     var checklists:     [KanbanChecklist]   /* List of checklists associated with the card        */
     var comments:       [KanbanComment]     /* Comments posted to the card's activity             */
     var dismissedActivityIDs: Set<String>   /* Generated activity entries removed by the user     */
+    var descriptionOverride: String?        /* Optional user-edited description                   */
 
 
     ///
@@ -38,19 +39,20 @@ struct KanbanCard: Identifiable, Hashable {
     /// @details    Creates a board card with a stable identifier, displayed word, list membership,
     ///             and the per-card title checkbox state used in the detail view
     ///
-    /// @param[in]  id                Stable numeric identifier for the card
-    /// @param[in]  word              Display word shown as the card's title
-    /// @param[in]  listTitle         Name of the list where the card resides
-    /// @param[in]  isTitleChecked    Whether the card's main title checkbox is selected
-    /// @param[in]  startDate         Optional start date for the card
-    /// @param[in]  dueDate           Optional due date for the card
+    /// @param[in]  id                    Stable numeric identifier for the card
+    /// @param[in]  word                  Display word shown as the card's title
+    /// @param[in]  listTitle             Name of the list where the card resides
+    /// @param[in]  isTitleChecked        Whether the card's main title checkbox is selected
+    /// @param[in]  startDate             Optional start date for the card
+    /// @param[in]  dueDate               Optional due date for the card
+    /// @param[in]  descriptionOverride   Optional user-edited description
     ///
     /// @return     (KanbanCard) configured card instance
     ///
     /// @pre        All values should be valid for the board's deterministic sample data
     /// @post       The card contains the provided identity, title text, and checked state
     ///
-    init(id: Int, word: String, listTitle: String, isTitleChecked: Bool = false, startDate: Date? = nil, dueDate: Date? = nil, checklists: [KanbanChecklist]? = nil, comments: [KanbanComment] = [], dismissedActivityIDs: Set<String> = []) {
+    init(id: Int, word: String, listTitle: String, isTitleChecked: Bool = false, startDate: Date? = nil, dueDate: Date? = nil, checklists: [KanbanChecklist]? = nil, comments: [KanbanComment] = [], dismissedActivityIDs: Set<String> = [], descriptionOverride: String? = nil) {
 
         self.id             = id                /* Stable numeric identifier for the card             */
         self.word           = word              /* Display word shown as the card's title             */
@@ -65,6 +67,7 @@ struct KanbanCard: Identifiable, Hashable {
         ]
         self.comments             = comments
         self.dismissedActivityIDs = dismissedActivityIDs
+        self.descriptionOverride  = descriptionOverride
     }
 
     /// Human-readable label for the card's start date.
@@ -121,6 +124,10 @@ struct KanbanCard: Identifiable, Hashable {
 
     /// Humorous context paragraph shown in the card detail view
     var funParagraph: String {
+
+        if let descriptionOverride {
+            return descriptionOverride
+        }
 
         let templates: [(String, String) -> String] = [
 

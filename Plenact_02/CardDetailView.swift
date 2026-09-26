@@ -104,6 +104,7 @@ struct CardDetailView: View {
     @State private var titleChecked: Bool                    /* Whether the card title itself is checked                     */
     @State private var startDate: Date?                      /* Optional start date for the selected card                    */
     @State private var dueDate: Date?                        /* Optional due date for the selected card                      */
+    @State private var descriptionText: String               /* Editable description shown on this card                      */
     @State private var activeDatePicker: DateField?          /* The date field whose calendar sheet is currently open        */
     @State private var comments: [KanbanComment]             /* Comments saved to this card's activity                       */
     @State private var commentDraft = ""                     /* Text currently entered in the comment composer               */
@@ -120,16 +121,17 @@ struct CardDetailView: View {
     ///
     init(card: KanbanCard, onTitleToggle: ((KanbanCard) -> Void)? = nil) {
 
-        self.card          = card                                   /* The kanban card being displayed in detail                            */
-        self.onTitleToggle = onTitleToggle                          /* Callback invoked when the card title checkbox is toggled             */
+        self.card          = card                                               /* The kanban card being displayed in detail                            */
+        self.onTitleToggle = onTitleToggle                                      /* Callback invoked when the card title checkbox is toggled             */
 
-        _titleChecked = State(initialValue: card.isTitleChecked)    /* Initialize the title checked state based on the card's current value */
-        _startDate    = State(initialValue: card.startDate)         /* Initialize the start date from the card state                        */
-        _dueDate      = State(initialValue: card.dueDate)           /* Initialize the due date from the card state                          */
-        _comments     = State(initialValue: card.comments)          /* Initialize comments from the selected card                           */
-        _dismissedActivityIDs = State(initialValue: card.dismissedActivityIDs)
+        _titleChecked         = State(initialValue: card.isTitleChecked)        /* Initialize the title checked state based on the card's current value */
+        _startDate            = State(initialValue: card.startDate)             /* Initialize the start date from the card state                        */
+        _dueDate              = State(initialValue: card.dueDate)               /* Initialize the due date from the card state                          */
+        _descriptionText      = State(initialValue: card.funParagraph)          /* Initialize the editable description from the card                    */
+        _comments             = State(initialValue: card.comments)              /* Initialize comments from the selected card                           */
+        _dismissedActivityIDs = State(initialValue: card.dismissedActivityIDs)  /* Initialize dismissed activity IDs from the card state                 */
 
-        _checklists = State(initialValue: card.checklists)          /* Initialize checklist state from the card's stored values             */
+        _checklists = State(initialValue: card.checklists)                      /* Initialize checklist state from the card's stored values             */
     }
 
 
@@ -159,15 +161,16 @@ struct CardDetailView: View {
         let nextDueDate      = clearDueDate   ? nil : (dueDate   ?? self.dueDate)
 
         let updatedCard = KanbanCard(
-            id:             card.id,
-            word:           card.word,
-            listTitle:      card.listTitle,
-            isTitleChecked: nextTitleChecked,
-            startDate:      nextStartDate,
-            dueDate:        nextDueDate,
-            checklists:     checklists,
-            comments:       comments,
-            dismissedActivityIDs: dismissedActivityIDs
+            id:                   card.id,
+            word:                 card.word,
+            listTitle:            card.listTitle,
+            isTitleChecked:       nextTitleChecked,
+            startDate:            nextStartDate,
+            dueDate:              nextDueDate,
+            checklists:           checklists,
+            comments:             comments,
+            dismissedActivityIDs: dismissedActivityIDs,
+            descriptionOverride:  descriptionText
         )
 
         onTitleToggle?(updatedCard)
@@ -535,10 +538,15 @@ struct CardDetailView: View {
                     //          vertically so the complete description remains readable                              //
                     //***********************************************************************************************//
                     DetailSection(title: "Description") {
-                        Text(card.funParagraph)
+
+                        TextField("Description", text: $descriptionText, axis: .vertical)
                             .font(.body)
                             .foregroundStyle(.primary)
                             .fixedSize(horizontal: false, vertical: true)
+                            .lineLimit(3...12)
+                            .onChange(of: descriptionText) {
+                                syncCardState()
+                            }
                     }
 
                     //***********************************************************************************************//
