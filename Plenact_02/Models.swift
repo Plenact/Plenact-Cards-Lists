@@ -25,6 +25,8 @@ struct KanbanCard: Identifiable, Hashable {
     let word:           String      /* Display word shown as the card's title             */
     let listTitle:      String      /* Name of the list where the card resides            */
     var isTitleChecked: Bool        /* Whether the card's main title checkbox is selected */
+    var startDate:      Date?       /* Optional start date for the card                   */
+    var dueDate:        Date?       /* Optional due date for the card                     */
 
 
     ///
@@ -37,20 +39,50 @@ struct KanbanCard: Identifiable, Hashable {
     /// @param[in]  word              Display word shown as the card's title
     /// @param[in]  listTitle         Name of the list where the card resides
     /// @param[in]  isTitleChecked    Whether the card's main title checkbox is selected
+    /// @param[in]  startDate         Optional start date for the card
+    /// @param[in]  dueDate           Optional due date for the card
     ///
     /// @return     (KanbanCard) configured card instance
     ///
     /// @pre        All values should be valid for the board's deterministic sample data
     /// @post       The card contains the provided identity, title text, and checked state
     ///
-    init(id: Int, word: String, listTitle: String, isTitleChecked: Bool = false) {
+    init(id: Int, word: String, listTitle: String, isTitleChecked: Bool = false, startDate: Date? = nil, dueDate: Date? = nil) {
 
         self.id             = id                /* Stable numeric identifier for the card             */
         self.word           = word              /* Display word shown as the card's title             */
         self.listTitle      = listTitle         /* Name of the list where the card resides            */
         self.isTitleChecked = isTitleChecked    /* Whether the card's main title checkbox is selected */
+        self.startDate      = startDate         /* Optional start date for the card                   */
+        self.dueDate        = dueDate           /* Optional due date for the card                     */
     }
 
+    /// Human-readable label for the card's start date.
+    var startDateLabel: String {
+        guard let startDate else {
+            return "Today"
+        }
+
+        return Self.dateFormatter.string(from: startDate)
+    }
+
+    /// Human-readable label for the card's due date.
+    var dueDateLabel: String {
+        guard let dueDate else {
+            return "Tomorrow"
+        }
+
+        return Self.dateFormatter.string(from: dueDate)
+    }
+
+    /// Shared formatter used to render card date labels.
+    private static let dateFormatter: DateFormatter = {
+        let formatter       = DateFormatter()
+        formatter.dateStyle = .medium
+        formatter.timeStyle = .none
+
+        return formatter
+    }()
 
     /// Short supporting copy shown beneath the card title
     var subtitle: String {

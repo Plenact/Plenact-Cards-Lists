@@ -21,6 +21,21 @@ import SwiftUI
 ///
 struct CardDetailView: View {
 
+    // -------------------------------------- MARK: - Date Field Enum ------------------------------- //
+    private enum DateField: String, Identifiable {
+        case start      /* Start date field for the card */
+        case due        /* Due date field for the card   */
+
+        var id: String { rawValue }
+
+        var title: String {
+            switch self {
+            case .start: return "Start date"
+            case .due:   return "Due date"
+            }
+        }
+    }
+
     let card: KanbanCard                                    /* The kanban card being displayed in detail                */
     let onTitleToggle: ((KanbanCard) -> Void)?              /* Callback invoked when the card title checkbox is toggled */
 
@@ -28,6 +43,9 @@ struct CardDetailView: View {
     @Environment(\.dismiss) private var dismiss             /* Dismiss action for the card detail view                */
     @State private var checklists: [KanbanChecklist]        /* The checklist groups associated with the selected card */
     @State private var titleChecked: Bool                   /* Whether the card title itself is checked               */
+    @State private var startDate: Date?                     /* Optional start date for the selected card              */
+    @State private var dueDate: Date?                       /* Optional due date for the selected card                */
+    @State private var activeDatePicker: DateField?         /* The date field whose calendar sheet is currently open   */
 
     ///
     /// @brief      Initialize the card detail state
@@ -41,14 +59,113 @@ struct CardDetailView: View {
 
         self.card          = card                                   /* The kanban card being displayed in detail                            */
         self.onTitleToggle = onTitleToggle                          /* Callback invoked when the card title checkbox is toggled             */
-        
+
         _titleChecked = State(initialValue: card.isTitleChecked)    /* Initialize the title checked state based on the card's current value */
-        
+        _startDate    = State(initialValue: card.startDate)         /* Initialize the start date from the card state                        */
+        _dueDate      = State(initialValue: card.dueDate)           /* Initialize the due date from the card state                          */
+
         _checklists = State(initialValue: [                         /* Initialize the checklist groups based on the card's current state    */
             KanbanChecklist(title: "Focus",   items: card.checklistItems,            completed: card.completedChecklistItems),
             KanbanChecklist(title: "Plan",    items: ["Choose the next useful step", "Stop building", "Start producing"], completed: 1),
             KanbanChecklist(title: "Routine", items: ["Home",                        "Gym",           "Work"])
         ])
+    }
+
+
+    ///
+    /// @brief      Push the current card state back to the parent board
+    /// @details    Builds the latest card snapshot from the title checkbox and date values,
+    ///             then emits it to the callback so the list view remains synchronized.
+    ///
+    /// @param[in]  titleChecked   Optional updated checked state for the card title
+    /// @param[in]  startDate      Optional updated start date for the card
+    /// @param[in]  dueDate        Optional updated due date for the card
+    /// @param[in]  clearStartDate Whether to remove the card's start date
+    /// @param[in]  clearDueDate   Whether to remove the card's due date
+    ///
+    /// @post       The parent view receives the current card state for persistence
+    ///
+    private func syncCardState(
+        titleChecked:   Bool? = nil,
+        startDate:      Date? = nil,
+        dueDate:        Date? = nil,
+        clearStartDate: Bool  = false,
+        clearDueDate:   Bool  = false
+    ) {
+
+        let nextTitleChecked = titleChecked                      ?? self.titleChecked
+        let nextStartDate    = clearStartDate ? nil : (startDate ?? self.startDate)
+        let nextDueDate      = clearDueDate   ? nil : (dueDate   ?? self.dueDate)
+
+        let updatedCard = KanbanCard(
+            id:             card.id,
+            word:           card.word,
+            listTitle:      card.listTitle,
+            isTitleChecked: nextTitleChecked,
+            startDate:      nextStartDate,
+            dueDate:        nextDueDate
+        )
+
+        onTitleToggle?(updatedCard)
+    }
+
+    ///
+    /// @brief      Reset the selected card date to its unset value
+    /// @details    Clears only the requested date, synchronizes the card, and closes the calendar sheet
+    ///
+    /// @param[in]  field  The date field to reset
+    ///
+    private func resetDate(for field: DateField) {
+        switch field {
+        case .start:
+            startDate = nil
+            syncCardState(clearStartDate: true)
+        case .due:
+            dueDate = nil
+            syncCardState(clearDueDate: true)
+        }
+
+        activeDatePicker = nil
+    }
+
+    ///
+    /// @brief      Create a binding for the selected card date
+    /// @details    Updates the local date and parent card state, then dismisses the calendar sheet
+    ///
+    /// @param[in]  field  The card date field being edited
+    ///
+    /// @return     (Binding<Date>) binding that updates and dismisses on selection
+    ///
+    private func dateBinding(for field: DateField) -> Binding<Date> {
+
+        Binding(
+            get: {
+
+                switch field {
+
+                    case .start: 
+                        return startDate ?? Date()
+
+                    case .due:   
+                        return dueDate ?? Date()
+                }
+            },
+            set: { newValue in
+
+                switch field {
+
+                    case .start:
+                        startDate = newValue
+                        syncCardState(startDate: newValue)
+                        
+                    case .due:
+                        dueDate = newValue
+                        syncCardState(dueDate: newValue)
+                }
+                
+                activeDatePicker = nil
+            }
+        )
     }
 
 
@@ -243,16 +360,11 @@ struct CardDetailView: View {
                 VStack(alignment: .leading, spacing: 0) {
 
                     HStack(alignment: .center, spacing: 12) {
-                        
+
                         Button {
                             let nextChecked = !titleChecked
                             titleChecked = nextChecked
-                            onTitleToggle?(KanbanCard(
-                                id: card.id,
-                                word: card.word,
-                                listTitle: card.listTitle,
-                                isTitleChecked: nextChecked
-                            ))
+                            syncCardState(titleChecked: nextChecked)
                         } label: {
                             Image(systemName: titleChecked ? "checkmark.square.fill" : "square")
                                 .font(.title2)
@@ -310,9 +422,35 @@ struct CardDetailView: View {
                     //          Presents the selected card's dates, labels, and member metadata in aligned rows      //
                     //***********************************************************************************************//
                     DetailSection(title: "Details") {
-                        DetailRow(icon: "calendar", title: "Start date", value: "Today")
+                        HStack(alignment: .center) {
+                            Image(systemName: "calendar")
+                                .foregroundStyle(.secondary)
+                            Text("Start date")
+                                .font(.body)
+                            Spacer()
+                            Button {
+                                activeDatePicker = .start
+                            } label: {
+                                Text(startDate.map { $0.formatted(date: .abbreviated, time: .omitted) } ?? "Today")
+                            }
+                            .buttonStyle(.plain)
+                            .accessibilityLabel("Edit start date")
+                        }
                         Divider()
-                        DetailRow(icon: "calendar.badge.clock", title: "Due date", value: card.hasDueDate ? "Tomorrow" : "None")
+                        HStack(alignment: .center) {
+                            Image(systemName: "calendar.badge.clock")
+                                .foregroundStyle(.secondary)
+                            Text("Due date")
+                                .font(.body)
+                            Spacer()
+                            Button {
+                                activeDatePicker = .due
+                            } label: {
+                                Text(dueDate.map { $0.formatted(date: .abbreviated, time: .omitted) } ?? "Tomorrow")
+                            }
+                            .buttonStyle(.plain)
+                            .accessibilityLabel("Edit due date")
+                        }
                         Divider()
                         DetailRow(icon: "tag", title: "Labels", value: "Planning")
                         Divider()
@@ -389,6 +527,33 @@ struct CardDetailView: View {
         .navigationTitle(card.word.capitalized)
         .navigationBarTitleDisplayMode(.inline)
         .navigationBarBackButtonHidden(true)
+        .sheet(item: $activeDatePicker) { field in
+            NavigationStack {
+                DatePicker(
+                    field.title,
+                    selection: dateBinding(for: field),
+                    displayedComponents: [.date]
+                )
+                .datePickerStyle(.graphical)
+                .labelsHidden()
+                .padding()
+                .navigationTitle(field.title)
+                .navigationBarTitleDisplayMode(.inline)
+                .toolbar {
+                    ToolbarItem(placement: .topBarLeading) {
+                        Button("Reset") {
+                            resetDate(for: field)
+                        }
+                    }
+                    ToolbarItem(placement: .topBarTrailing) {
+                        Button("Done") {
+                            activeDatePicker = nil
+                        }
+                    }
+                }
+            }
+            .presentationDetents([.medium, .large])
+        }
     }
 }
 
