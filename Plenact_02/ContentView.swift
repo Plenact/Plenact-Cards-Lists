@@ -395,6 +395,46 @@ struct ContentView: View {
             return
         }
     }
+
+
+    ///
+    /// @fcn        ContentView.moveCard(_:toListID:)
+    /// @brief      Move an existing card into a different board list
+    /// @details    Finds the card by its stable identifier, removes it from its current list,
+    ///             updates its list title, and appends it to the destination list while retaining its state
+    ///
+    /// @param[in]  cardID             Stable identifier of the card being moved
+    /// @param[in]  destinationListID  Stable identifier of the list receiving the card
+    ///
+    /// @return     (Void) updates the source and destination lists in the board state
+    ///
+    /// @pre        cardID exists in a board list and destinationListID identifies another list
+    /// @post       The card is removed from its source list and appears at the end of the destination list
+    ///             with its existing card data preserved
+    ///
+    /// @note       The operation leaves board state unchanged if the card or destination is missing,
+    ///             or if the destination is the card's current list
+    ///
+    private func moveCard(_ cardID: Int, toListID destinationListID: Int) {
+
+        guard let sourceListIndex = lists.firstIndex(where: { list in
+                  list.cards.contains(where: { $0.id == cardID })
+              }),
+
+              let destinationListIndex = lists.firstIndex(where: { $0.id == destinationListID }),
+
+              sourceListIndex != destinationListIndex,
+
+              let cardIndex = lists[sourceListIndex].cards.firstIndex(where: { $0.id == cardID }) else {
+
+            return
+        }
+
+        var movedCard       = lists[sourceListIndex].cards.remove(at: cardIndex)
+        movedCard.listTitle = lists[destinationListIndex].title
+        
+        lists[destinationListIndex].cards.append(movedCard)
+    }
     
 
     /// Builds the board scene and its horizontally scrollable list collection.
@@ -460,9 +500,18 @@ struct ContentView: View {
             }
             .toolbar(.hidden, for: .navigationBar)
             .navigationDestination(for: KanbanCard.self) { card in
-                CardDetailView(card: card, onTitleToggle: { updatedCard in
-                    updateCard(updatedCard)
-                })
+                CardDetailView(
+                    card: card,
+                    availableLists: lists.filter { list in
+                        !list.cards.contains(where: { $0.id == card.id })
+                    },
+                    onTitleToggle: { updatedCard in
+                        updateCard(updatedCard)
+                    },
+                    onMoveToList: { destinationListID in
+                        moveCard(card.id, toListID: destinationListID)
+                    }
+                )
             }
         }
     }

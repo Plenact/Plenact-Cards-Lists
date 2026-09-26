@@ -122,7 +122,9 @@ struct CardDetailView: View {
     }
 
     let card: KanbanCard                                     /* The kanban card being displayed in detail                    */
+    let availableLists: [KanbanList]                         /* Other lists that can receive this card                       */
     let onTitleToggle: ((KanbanCard) -> Void)?               /* Callback invoked when the card title checkbox is toggled     */
+    let onMoveToList: ((Int) -> Void)?                       /* Callback invoked to move the card to a selected list         */
 
     @Environment(\.dismiss) private var dismiss              /* Dismiss action for the card detail view                      */
     @FocusState private var focusedField: EditableField?     /* current focused editable field within the card detail view   */
@@ -149,10 +151,17 @@ struct CardDetailView: View {
     ///
     /// @return     (CardDetailView) configured card detail presentation
     ///
-    init(card: KanbanCard, onTitleToggle: ((KanbanCard) -> Void)? = nil) {
+    init(
+        card: KanbanCard,
+        availableLists: [KanbanList]           = [],        /* Other lists available as move destinations                   */
+        onTitleToggle: ((KanbanCard) -> Void)? = nil,       /* Callback invoked when the card title checkbox is toggled     */
+        onMoveToList: ((Int) -> Void)?         = nil        /* Callback invoked when the card is moved                      */
+    ) {
 
-        self.card          = card                                               /* The kanban card being displayed in detail                            */
-        self.onTitleToggle = onTitleToggle                                      /* Callback invoked when the card title checkbox is toggled             */
+        self.card           = card                                              /* The kanban card being displayed in detail                            */
+        self.availableLists = availableLists                                    /* Other lists available as move destinations                           */
+        self.onTitleToggle  = onTitleToggle                                     /* Callback invoked when the card title checkbox is toggled             */
+        self.onMoveToList   = onMoveToList                                      /* Callback invoked when the card is moved                              */
 
         _titleChecked         = State(initialValue: card.isTitleChecked)        /* Initialize the title checked state based on the card's current value */
         _titleText            = State(initialValue: card.word)                  /* Initialize the editable title from the card                          */
@@ -1040,6 +1049,24 @@ struct CardDetailView: View {
                 .accessibilityLabel("Close card")
 
                 Spacer()
+
+                Menu {
+                    ForEach(availableLists) { list in
+                        Button(list.title) {
+                            onMoveToList?(list.id)
+                            dismiss()
+                        }
+                    }
+                } label: {
+                    Image(systemName: "arrowshape.turn.up.right")
+                        .font(.title3)
+                        .foregroundStyle(.primary)
+                        .frame(width: 44, height: 44)
+                        .contentShape(Rectangle())
+                }
+                .buttonStyle(.plain)
+                .disabled(availableLists.isEmpty)
+                .accessibilityLabel("Move card to another list")
             }
             .padding(.horizontal, 16)
             .padding(.vertical, 4)

@@ -23,7 +23,7 @@ struct KanbanCard: Identifiable, Hashable {
 
     let id:             Int                 /* Stable numeric identifier for the card             */
     let word:           String              /* Display word shown as the card's title             */
-    let listTitle:      String              /* Name of the list where the card resides            */
+    var listTitle:      String              /* Name of the list where the card resides            */
     var isDivider:      Bool                /* Whether this item is a movable section divider     */
     var isTitleChecked: Bool                /* Whether the card's main title checkbox is selected */
     var startDate:      Date?               /* Optional start date for the card                   */
