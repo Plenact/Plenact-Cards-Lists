@@ -95,11 +95,18 @@ struct CardDetailView: View {
         }
     }
 
+    // Selection modes for editable fields within the card detail view
+    private enum EditableField: Hashable {
+        case description        /* The description field is being edited */
+        case comment            /* The comment field is being edited     */
+    }
+
     let card: KanbanCard                                     /* The kanban card being displayed in detail                    */
     let onTitleToggle: ((KanbanCard) -> Void)?               /* Callback invoked when the card title checkbox is toggled     */
 
 
     @Environment(\.dismiss) private var dismiss              /* Dismiss action for the card detail view                      */
+    @FocusState private var focusedField: EditableField?     /* current focused editable field within the card detail view   */
     @State private var checklists: [KanbanChecklist]         /* The checklist groups associated with the selected card       */
     @State private var titleChecked: Bool                    /* Whether the card title itself is checked                     */
     @State private var startDate: Date?                      /* Optional start date for the selected card                    */
@@ -174,6 +181,20 @@ struct CardDetailView: View {
         )
 
         onTitleToggle?(updatedCard)
+    }
+
+
+    ///
+    /// @brief      Toggle the checked state of the card's title
+    /// @details    Flips the boolean value representing whether the card's main title checkbox is selected and synchronizes 
+    ///             this change with the parent board
+    ///
+    private func toggleCardTitle() {
+
+        let nextChecked = !titleChecked
+        titleChecked    = nextChecked
+
+        syncCardState(titleChecked: nextChecked)
     }
     
 
@@ -489,11 +510,7 @@ struct CardDetailView: View {
 
                     HStack(alignment: .center, spacing: 12) {
 
-                        Button {
-                            let nextChecked = !titleChecked
-                            titleChecked = nextChecked
-                            syncCardState(titleChecked: nextChecked)
-                        } label: {
+                        Button(action: toggleCardTitle) {
                             Image(systemName: titleChecked ? "checkmark.square.fill" : "square")
                                 .font(.title2)
                                 .foregroundStyle(titleChecked ? .blue : .secondary)
@@ -511,8 +528,57 @@ struct CardDetailView: View {
 
                         Spacer()
 
-                        Image(systemName: "ellipsis")
-                            .foregroundStyle(.secondary)
+                        HStack(spacing: 16) {
+                            Menu {
+                                Button(action: addChecklist) {
+                                    Label("Add checklist", systemImage: "checklist")
+                                }
+                                Button {
+                                    activeDatePicker = .start
+                                } label: {
+                                    Label("Set start date", systemImage: "calendar")
+                                }
+                                Button {
+                                    activeDatePicker = .due
+                                } label: {
+                                    Label("Set due date", systemImage: "calendar.badge.clock")
+                                }
+                                Button {
+                                    focusedField = .comment
+                                } label: {
+                                    Label("Add comment", systemImage: "text.bubble")
+                                }
+                            } label: {
+                                Image(systemName: "plus.circle")
+                                    .font(.title2)
+                                    .foregroundStyle(.primary)
+                            }
+                            .accessibilityLabel("Add to card")
+
+                            Menu {
+                                Button(action: toggleCardTitle) {
+                                    Label(
+                                        titleChecked ? "Mark incomplete" : "Mark complete",
+                                        systemImage: titleChecked ? "square" : "checkmark.square"
+                                    )
+                                }
+                                Button {
+                                    focusedField = .description
+                                } label: {
+                                    Label("Edit description", systemImage: "text.alignleft")
+                                }
+                                Button {
+                                    activityFilter = .all
+                                } label: {
+                                    Label("Show all activity", systemImage: "clock.arrow.circlepath")
+                                }
+                            } label: {
+                                Image(systemName: "ellipsis")
+                                    .font(.title2)
+                                    .foregroundStyle(.secondary)
+                            }
+                            .accessibilityLabel("Card actions")
+                        }
                     }
                     .padding(16)
 
@@ -544,6 +610,7 @@ struct CardDetailView: View {
                             .foregroundStyle(.primary)
                             .fixedSize(horizontal: false, vertical: true)
                             .lineLimit(3...12)
+                            .focused($focusedField, equals: .description)
                             .onChange(of: descriptionText) {
                                 syncCardState()
                             }
@@ -677,6 +744,7 @@ struct CardDetailView: View {
 
                         TextField("Comment...", text: $commentDraft, axis: .vertical)
                             .lineLimit(1...4)
+                            .focused($focusedField, equals: .comment)
                             .padding(.horizontal, 14)
                             .padding(.vertical, 10)
                             .background(.background)
