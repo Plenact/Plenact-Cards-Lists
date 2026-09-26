@@ -55,26 +55,33 @@ struct ContentView: View {
 
 
     ///
-    /// @fcn        ContentView.addCard(to:)
-    /// @brief      Add a new card at the top of the selected list
-    /// @details    Allocates a board-wide unique card identifier and inserts a default "new card" entry
+    /// @fcn        ContentView.addCard(to:title:description:)
+    /// @brief      Add a completed card form to the end of the selected list
+    /// @details    Allocates a board-wide unique card identifier and stores the supplied title and description
     ///
     /// @param[in]  listID  Stable identifier of the list receiving the card
+    /// @param[in]  title   User-entered card title
+    /// @param[in]  description User-entered card description
     ///
     /// @return     (Void) updates the matching list in the board state
     ///
     /// @pre        listID identifies a list in the current board
-    /// @post       The list contains the new card as its first card
+    /// @post       The new card appears as the last card in the selected list
     ///
-    private func addCard(to listID: Int) {
+    private func addCard(to listID: Int, title: String, description: String) {
+        
         guard let listIndex = lists.firstIndex(where: { $0.id == listID }) else { return }
 
         let nextCardID  = (lists.flatMap { $0.cards.map(\.id) }.max() ?? -1) + 1
         var updatedList = lists[listIndex]
 
-        updatedList.cards.insert(
-            KanbanCard(id: nextCardID, word: "new card", listTitle: updatedList.title),
-            at: 0
+        updatedList.cards.append(
+            KanbanCard(
+                id:                  nextCardID,
+                word:                title,
+                listTitle:           updatedList.title,
+                descriptionOverride: description
+            )
         )
 
         lists[listIndex] = updatedList
@@ -306,7 +313,9 @@ struct ContentView: View {
                                         },
                                         canMoveEarlier: listIndex > 0,
                                         canMoveLater: listIndex < lists.count - 1,
-                                        onAddCard: { addCard(to: list.id) },
+                                        onAddCard: { title, description in
+                                            addCard(to: list.id, title: title, description: description)
+                                        },
                                         onCopyList: { copyList(with: list.id) },
                                         onMoveList: { offset in moveList(with: list.id, by: offset) },
                                         onSortList: { ascending in sortList(with: list.id, ascending: ascending) },
@@ -452,20 +461,27 @@ private struct BoardSettingsView: View {
 ///
 struct KanbanListView: View {
 
+    private enum ActiveSheet: String, Identifiable {
+        case listActions
+        case newCard
+
+        var id: String { rawValue }
+    }
+
     let list: KanbanList
     let screenSize: CGSize
     let displaySettings: BoardDisplaySettings
     let toggleCardTitle: (Int) -> Void
     let canMoveEarlier: Bool
     let canMoveLater:  Bool
-    let onAddCard: () -> Void
+    let onAddCard: (String, String) -> Void
     let onCopyList: () -> Void
     let onMoveList: (Int) -> Void
     let onSortList: (Bool) -> Void
     let onArchiveCompleted: () -> Void
     let onArchiveList: () -> Void
 
-    @State private var showingListActions = false
+    @State private var activeSheet: ActiveSheet?
     @State private var isWatching = false
     @State private var listTint: KanbanListTint = .neutral
 
@@ -500,7 +516,7 @@ struct KanbanListView: View {
                     .foregroundStyle(.secondary)
 
                 Button {
-                    showingListActions = true
+                    activeSheet = .listActions
                 } label: {
                     Image(systemName: "ellipsis")
                         .foregroundStyle(.secondary)
@@ -525,7 +541,9 @@ struct KanbanListView: View {
                         .buttonStyle(.plain)
                     }
 
-                    Button(action: {}) {
+                    Button {
+                        activeSheet = .newCard
+                    } label: {
                         Label("Add card", systemImage: "plus")
                             .font(.subheadline.weight(.medium))
                             .foregroundStyle(.secondary)
@@ -539,21 +557,71 @@ struct KanbanListView: View {
         .background(listTint.color)
         .clipShape(RoundedRectangle(cornerRadius: 18, style: .continuous))
         .shadow(color: .black.opacity(0.18), radius: 10, y: 5)
-        .sheet(isPresented: $showingListActions) {
-            KanbanListActionsSheet(
-                list: list,
-                canMoveEarlier: canMoveEarlier,
-                canMoveLater: canMoveLater,
-                isWatching: $isWatching,
-                listTint: $listTint,
-                onAddCard: onAddCard,
-                onCopyList: onCopyList,
-                onMoveList: onMoveList,
-                onSortList: onSortList,
-                onArchiveCompleted: onArchiveCompleted,
-                onArchiveList: onArchiveList
-            )
+        .sheet(item: $activeSheet) { presentedSheet in
+            switch presentedSheet {
+            case .listActions:
+                KanbanListActionsSheet(
+                    list: list,
+                    canMoveEarlier: canMoveEarlier,
+                    canMoveLater: canMoveLater,
+                    isWatching: $isWatching,
+                    listTint: $listTint,
+                    onAddCard: { activeSheet = .newCard },
+                    onCopyList: onCopyList,
+                    onMoveList: onMoveList,
+                    onSortList: onSortList,
+                    onArchiveCompleted: onArchiveCompleted,
+                    onArchiveList: onArchiveList
+                )
+            case .newCard:
+                NewKanbanCardSheet(listTitle: list.title, onCreate: onAddCard)
+            }
         }
+    }
+}
+
+
+private struct NewKanbanCardSheet: View {
+
+    let listTitle: String
+    let onCreate: (String, String) -> Void
+
+    @Environment(\.dismiss) private var dismiss
+    @State private var title = ""
+    @State private var description = ""
+
+    private var trimmedTitle: String {
+        title.trimmingCharacters(in: .whitespacesAndNewlines)
+    }
+
+    var body: some View {
+        NavigationStack {
+            Form {
+                Section("Card details") {
+                    TextField("Title", text: $title)
+                    TextField("Description", text: $description, axis: .vertical)
+                        .lineLimit(3...8)
+                }
+            }
+            .navigationTitle("New Card")
+            .navigationBarTitleDisplayMode(.inline)
+            .toolbar {
+                ToolbarItem(placement: .cancellationAction) {
+                    Button("Cancel") {
+                        dismiss()
+                    }
+                }
+                ToolbarItem(placement: .confirmationAction) {
+                    Button("Add") {
+                        onCreate(trimmedTitle, description.trimmingCharacters(in: .whitespacesAndNewlines))
+                        dismiss()
+                    }
+                    .disabled(trimmedTitle.isEmpty)
+                }
+            }
+        }
+        .presentationDetents([.medium, .large])
+        .presentationDragIndicator(.visible)
     }
 }
 
@@ -614,7 +682,7 @@ private struct KanbanListActionsSheet: View {
                         onAddCard()
                         dismiss()
                     } label: {
-                        Label("Add card to top of list", systemImage: "plus")
+                        Label("Add card", systemImage: "plus")
                     }
 
                     Button {
