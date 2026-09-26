@@ -36,16 +36,79 @@ struct CardDetailView: View {
         }
     }
 
-    let card: KanbanCard                                    /* The kanban card being displayed in detail                */
-    let onTitleToggle: ((KanbanCard) -> Void)?              /* Callback invoked when the card title checkbox is toggled */
+    /// Stable identifiers and display copy for the card's generated activity entries.
+    ///
+    /// @section    Purpose
+    ///     Keep generated activity text identifiable so a user's deletion remains associated with the card
+    ///
+    private enum GeneratedActivity: String, CaseIterable, Identifiable {
+        case addedCard
+        case createdCard
+        case initialComment
+
+        var id: String { rawValue }
+
+        ///
+        /// @fcn        GeneratedActivity.text(for:)
+        /// @brief      Generate the display text for an activity entry
+        /// @details    Resolves this activity type into user-visible copy using the selected card's title and list
+        ///
+        /// @param[in]  card    Card whose activity feed is being rendered
+        ///
+        /// @return     (String) display text for this generated activity entry
+        ///
+        /// @pre        card contains the identity and list details used by the activity message
+        /// @post       No card or activity state is modified
+        ///
+        func text(for card: KanbanCard) -> String {
+            switch self {
+                case .addedCard:
+                    return "Justin Reina added \(card.word.capitalized) to this card"
+                case .createdCard:
+                    return "Justin Reina created this card in \(card.listTitle)"
+                case .initialComment:
+                    return "Justin Reina: \"This is going to be surprisingly useful.\""
+            }
+        }
+    }
+
+    /// Selection modes available for the card's Activity feed
+    ///
+    /// @section    Purpose
+    ///     Control whether the feed displays all entries, comments, or generated card activity
+    ///
+    /// @note   This filter is presentation state and is not persisted with the card
+    ///
+    private enum ActivityFilter: String, CaseIterable, Identifiable {
+        case all                /* All activity entries for the card       */
+        case comments           /* User-added comments for the card        */  
+        case cardActivity       /* Generated activity entries for the card */
+
+        var id: String { rawValue }
+
+        var title: String {
+            switch self {
+            case .all:          "All Activity"
+            case .comments:     "Comments"
+            case .cardActivity: "Card Activity"
+            }
+        }
+    }
+
+    let card: KanbanCard                                     /* The kanban card being displayed in detail                    */
+    let onTitleToggle: ((KanbanCard) -> Void)?               /* Callback invoked when the card title checkbox is toggled     */
 
 
-    @Environment(\.dismiss) private var dismiss             /* Dismiss action for the card detail view                */
-    @State private var checklists: [KanbanChecklist]        /* The checklist groups associated with the selected card */
-    @State private var titleChecked: Bool                   /* Whether the card title itself is checked               */
-    @State private var startDate: Date?                     /* Optional start date for the selected card              */
-    @State private var dueDate: Date?                       /* Optional due date for the selected card                */
-    @State private var activeDatePicker: DateField?         /* The date field whose calendar sheet is currently open   */
+    @Environment(\.dismiss) private var dismiss              /* Dismiss action for the card detail view                      */
+    @State private var checklists: [KanbanChecklist]         /* The checklist groups associated with the selected card       */
+    @State private var titleChecked: Bool                    /* Whether the card title itself is checked                     */
+    @State private var startDate: Date?                      /* Optional start date for the selected card                    */
+    @State private var dueDate: Date?                        /* Optional due date for the selected card                      */
+    @State private var activeDatePicker: DateField?          /* The date field whose calendar sheet is currently open        */
+    @State private var comments: [KanbanComment]             /* Comments saved to this card's activity                       */
+    @State private var commentDraft = ""                     /* Text currently entered in the comment composer               */
+    @State private var dismissedActivityIDs: Set<String>     /* IDs of activity entries that have been dismissed by the user */
+    @State private var activityFilter: ActivityFilter = .all /* The currently selected activity filter for the card          */
 
     ///
     /// @brief      Initialize the card detail state
@@ -63,15 +126,17 @@ struct CardDetailView: View {
         _titleChecked = State(initialValue: card.isTitleChecked)    /* Initialize the title checked state based on the card's current value */
         _startDate    = State(initialValue: card.startDate)         /* Initialize the start date from the card state                        */
         _dueDate      = State(initialValue: card.dueDate)           /* Initialize the due date from the card state                          */
+        _comments     = State(initialValue: card.comments)          /* Initialize comments from the selected card                           */
+        _dismissedActivityIDs = State(initialValue: card.dismissedActivityIDs)
 
-        _checklists = State(initialValue: card.checklists)          /* Initialize checklist state from the card's stored values              */
+        _checklists = State(initialValue: card.checklists)          /* Initialize checklist state from the card's stored values             */
     }
 
 
     ///
     /// @brief      Push the current card state back to the parent board
     /// @details    Builds the latest card snapshot from the title checkbox and date values,
-    ///             then emits it to the callback so the list view remains synchronized.
+    ///             then emits it to the callback so the list view remains synchronized
     ///
     /// @param[in]  titleChecked   Optional updated checked state for the card title
     /// @param[in]  startDate      Optional updated start date for the card
@@ -100,11 +165,67 @@ struct CardDetailView: View {
             isTitleChecked: nextTitleChecked,
             startDate:      nextStartDate,
             dueDate:        nextDueDate,
-            checklists:     checklists
+            checklists:     checklists,
+            comments:       comments,
+            dismissedActivityIDs: dismissedActivityIDs
         )
 
         onTitleToggle?(updatedCard)
     }
+    
+
+    ///
+    /// @brief      Post a comment to the current card
+    /// @details    Ignores empty drafts, appends a timestamped comment, and syncs it to the board
+    ///
+    private func postComment() {
+
+        let text = commentDraft.trimmingCharacters(in: .whitespacesAndNewlines)
+
+        guard !text.isEmpty else { return }
+
+        comments.append(KanbanComment(author: "Justin Reina", body: text))
+        commentDraft = ""
+
+        syncCardState()
+    }
+
+
+    ///
+    /// @fcn        CardDetailView.deleteComment(with:)
+    /// @brief      Delete a posted comment from the current card
+    /// @details    Removes the comment matching its stable identifier and synchronizes the updated card with the board
+    ///
+    /// @param[in]  commentID  Stable identifier of the comment to remove
+    ///
+    /// @return     (Void) the comment collection and parent card state are updated in place
+    ///
+    /// @pre        commentID identifies a comment in the current card
+    /// @post       The comment is absent from the Activity feed and remains deleted after reopening the card
+    ///
+    private func deleteComment(with commentID: UUID) {
+        comments.removeAll { $0.id == commentID }
+        syncCardState()
+    }
+
+
+    ///
+    /// @fcn        CardDetailView.dismissGeneratedActivity(_:)
+    /// @brief      Dismiss one generated activity entry from the current card
+    /// @details    Records the entry's stable identifier as dismissed and synchronizes that state with the board
+    ///
+    /// @param[in]  activity  Generated activity entry selected for removal
+    ///
+    /// @return     (Void) the entry is removed from the rendered Activity feed
+    ///
+    /// @pre        activity is a generated entry belonging to the current card
+    /// @post       The entry stays dismissed when the card is reopened
+    ///
+    private func dismissGeneratedActivity(_ activity: GeneratedActivity) {
+        dismissedActivityIDs.insert(activity.id)
+        syncCardState()
+    }
+
 
     ///
     /// @brief      Reset the selected card date to its unset value
@@ -124,6 +245,7 @@ struct CardDetailView: View {
 
         activeDatePicker = nil
     }
+
 
     ///
     /// @brief      Create a binding for the selected card date
@@ -502,11 +624,65 @@ struct CardDetailView: View {
                     //                                                                                               //
                     //          Presents the recent events associated with the selected card                         //
                     //***********************************************************************************************//
-                    DetailSection(title: "Activity", trailing: "gearshape") {
-                        ActivityRow(text: "Justin Reina added \(card.word.capitalized) to this card")
-                        ActivityRow(text: "Justin Reina created this card in \(card.listTitle)")
-                        ActivityRow(text: "Justin Reina: \"This is going to be surprisingly useful.\"")
+                    VStack(alignment: .leading, spacing: 10) {
+                        HStack {
+                            Text("Activity")
+                                .font(.headline)
+                            Spacer()
+                            Menu {
+                                Picker("Show", selection: $activityFilter) {
+                                    ForEach(ActivityFilter.allCases) { filter in
+                                        Text(filter.title).tag(filter)
+                                    }
+                                }
+                            } label: {
+                                Image(systemName: "gearshape")
+                                    .foregroundStyle(.secondary)
+                            }
+                            .accessibilityLabel("Activity options")
+                        }
+
+                        if activityFilter != .cardActivity {
+                            ForEach(comments) { comment in
+                                CommentActivityRow(comment: comment) {
+                                    deleteComment(with: comment.id)
+                                }
+                            }
+                        }
+
+                        if activityFilter != .comments {
+                            ForEach(GeneratedActivity.allCases.filter { !dismissedActivityIDs.contains($0.id) }) { activity in
+                                ActivityRow(text: activity.text(for: card)) {
+                                    dismissGeneratedActivity(activity)
+                                }
+                            }
+                        }
                     }
+                    .padding(16)
+                    .background(.background)
+                    .overlay(alignment: .bottom) { Divider() }
+
+                    HStack(alignment: .bottom, spacing: 10) {
+                        Image(systemName: "person.crop.circle.fill")
+                            .font(.title2)
+                            .foregroundStyle(.teal)
+
+                        TextField("Comment...", text: $commentDraft, axis: .vertical)
+                            .lineLimit(1...4)
+                            .padding(.horizontal, 14)
+                            .padding(.vertical, 10)
+                            .background(.background)
+                            .clipShape(RoundedRectangle(cornerRadius: 18, style: .continuous))
+
+                        Button(action: postComment) {
+                            Image(systemName: "paperplane.fill")
+                                .font(.body.weight(.semibold))
+                        }
+                        .disabled(commentDraft.trimmingCharacters(in: .whitespacesAndNewlines).isEmpty)
+                        .accessibilityLabel("Post comment")
+                    }
+                    .padding(.horizontal, 16)
+                    .padding(.vertical, 12)
                 }
             }
             .padding(.bottom, 12)
@@ -889,6 +1065,7 @@ struct ChecklistItemRow: View {
 struct ActivityRow: View {
 
     let text: String    /* The main text content of the activity row */
+    let onDelete: () -> Void
 
 
     ///
@@ -899,18 +1076,43 @@ struct ActivityRow: View {
     ///
     var body: some View {
 
-        HStack(alignment: .top, spacing: 10) {
-            Image(systemName: "person.crop.circle.fill")
-                .foregroundStyle(.teal)
-            VStack(alignment: .leading, spacing: 3) {
-                Text(text)
-                    .font(.subheadline)
-                Text("Today at 7:00 AM")
-                    .font(.caption)
-                    .foregroundStyle(.secondary)
+        ActivitySwipeRow(onDelete: onDelete) {
+            HStack(alignment: .top, spacing: 10) {
+                Image(systemName: "person.crop.circle.fill")
+                    .foregroundStyle(.teal)
+                VStack(alignment: .leading, spacing: 3) {
+                    Text(text)
+                        .font(.subheadline)
+                    Text("Today at 7:00 AM")
+                        .font(.caption)
+                        .foregroundStyle(.secondary)
+                }
             }
         }
-        .padding(.vertical, 7)
+    }
+}
+
+
+/// Renders a posted card comment and its authoring time in the activity feed.
+struct CommentActivityRow: View {
+
+    let comment: KanbanComment
+    let onDelete: () -> Void
+
+    var body: some View {
+        ActivitySwipeRow(onDelete: onDelete) {
+            HStack(alignment: .top, spacing: 10) {
+                Image(systemName: "person.crop.circle.fill")
+                    .foregroundStyle(.teal)
+                VStack(alignment: .leading, spacing: 3) {
+                    (Text(comment.author).fontWeight(.semibold) + Text(" ") + Text(comment.body))
+                        .font(.subheadline)
+                    Text(comment.createdAt.formatted(date: .abbreviated, time: .shortened))
+                        .font(.caption)
+                        .foregroundStyle(.secondary)
+                }
+            }
+        }
     }
 }
 
@@ -923,7 +1125,58 @@ struct ActivityRow: View {
 /// @section    Purpose
 ///     Provide a fast Xcode canvas preview for the complete detail flow
 ///
-#Preview {
+    struct ActivitySwipeRow<Content: View>: View {
+
+        let onDelete: () -> Void
+        @ViewBuilder let content: () -> Content
+        @State private var horizontalOffset: CGFloat = 0
+
+        var body: some View {
+            ZStack(alignment: .trailing) {
+                Button(role: .destructive, action: onDelete) {
+                    Image(systemName: "trash")
+                        .foregroundStyle(.white)
+                        .frame(width: 72)
+                        .frame(maxHeight: .infinity)
+                        .background(.red)
+                }
+                .buttonStyle(.plain)
+                .accessibilityLabel("Delete activity")
+
+                content()
+                    .padding(.vertical, 7)
+                    .padding(.horizontal, 2)
+                    .frame(maxWidth: .infinity, alignment: .leading)
+                    .background(.background)
+                    .offset(x: horizontalOffset)
+                    .simultaneousGesture(
+                        DragGesture(minimumDistance: 12)
+                            .onChanged { value in
+                                guard abs(value.translation.width) > abs(value.translation.height) else {
+                                    return
+                                }
+                                horizontalOffset = min(0, max(-72, value.translation.width))
+                            }
+                            .onEnded { value in
+                                guard abs(value.translation.width) > abs(value.translation.height) else {
+                                    return
+                                }
+                                withAnimation(.easeOut(duration: 0.2)) {
+                                    if value.translation.width < -120 {
+                                        onDelete()
+                                    } else {
+                                        horizontalOffset = value.translation.width < -36 ? -72 : 0
+                                    }
+                                }
+                            }
+                    )
+            }
+            .clipped()
+        }
+    }
+
+
+    #Preview {
     NavigationStack {
         CardDetailView(card: SampleData.lists[0].cards[0])
     }
