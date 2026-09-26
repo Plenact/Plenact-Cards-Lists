@@ -108,6 +108,7 @@ struct CardDetailView: View {
     @FocusState private var focusedField: EditableField?     /* current focused editable field within the card detail view   */
 
     @State private var checklists: [KanbanChecklist]         /* The checklist groups associated with the selected card       */
+    @State private var checklistToFocus: UUID?               /* Newly added checklist whose first item should be focused     */
     @State private var titleChecked: Bool                    /* Whether the card title itself is checked                     */
     @State private var startDate: Date?                      /* Optional start date for the selected card                    */
     @State private var dueDate: Date?                        /* Optional due date for the selected card                      */
@@ -315,13 +316,26 @@ struct CardDetailView: View {
 
     ///
     /// @brief      Append a new empty checklist to the selected card's detail state
-    /// @details    Adds a checklist with the common default title and no items
+    /// @details    Adds a default checklist with its first item, syncs it to the card, scrolls it into view, and focuses the item
     ///
-    /// @post       The new checklist appears in the Checklists section with zero items and zero completion
+    /// @param[in]  scrollProxy  Proxy used to scroll the new checklist into view
     ///
-    private func addChecklist() {
-        checklists.append(KanbanChecklist(title: "Checklist"))
+    /// @post       The new checklist's first item is visible and ready for editing
+    ///
+    private func addChecklist(using scrollProxy: ScrollViewProxy) {
+
+        let checklist = KanbanChecklist(title: "Checklist", items: ["Item 1"])
+
+        checklists.append(checklist)
+        checklistToFocus = checklist.id
+
         syncCardState()
+
+        DispatchQueue.main.async {
+            withAnimation(.easeInOut) {
+                scrollProxy.scrollTo(checklist.id, anchor: .center)
+            }
+        }
     }
 
 
@@ -506,6 +520,7 @@ struct CardDetailView: View {
             Color(.systemGroupedBackground)
                 .ignoresSafeArea()
 
+            ScrollViewReader { scrollProxy in
             ScrollView {
 
                 VStack(alignment: .leading, spacing: 0) {
@@ -535,7 +550,9 @@ struct CardDetailView: View {
                         HStack(spacing: 16) {
 
                             Menu {
-                                Button(action: addChecklist) {
+                                Button {
+                                    addChecklist(using: scrollProxy)
+                                } label: {
                                     Label("Add checklist", systemImage: "checklist")
                                 }
                                 Button {
@@ -596,7 +613,7 @@ struct CardDetailView: View {
 
                         LazyVGrid(columns: [GridItem(.flexible()), GridItem(.flexible())], spacing: 8) {
 
-                            ActionTile(title: "Add Checklist",  icon: "checklist", color: .green,  action: addChecklist)
+                            ActionTile(title: "Add Checklist",  icon: "checklist", color: .green,  action: { addChecklist(using: scrollProxy) })
                             ActionTile(title: "Add Attachment", icon: "paperclip", color: .cyan,   action: {})
                             ActionTile(title: "Members",        icon: "person.2",  color: .purple, action: {})
                         }
@@ -682,7 +699,7 @@ struct CardDetailView: View {
                     //          Presents the card's checklist groups and their completion state. Checklist creation  //
                     //          and deletion update the local collection rendered here                               //
                     //***********************************************************************************************//
-                    DetailSection(title: "Checklists", trailing: "plus", trailingAction: addChecklist) {
+                    DetailSection(title: "Checklists", trailing: "plus", trailingAction: { addChecklist(using: scrollProxy) }) {
 
                         ForEach(checklists) { checklist in
 
@@ -708,8 +725,13 @@ struct CardDetailView: View {
 
                                 onDeleteItem: { itemIndex in
                                     deleteItem(in: checklist.id, at: itemIndex)
+                                },
+                                focusFirstItem: checklist.id == checklistToFocus,
+                                onFirstItemFocused: {
+                                    checklistToFocus = nil
                                 }
                             )
+                            .id(checklist.id)
                         }
                     }
 
@@ -783,6 +805,7 @@ struct CardDetailView: View {
                     .padding(.horizontal, 16)
                     .padding(.vertical, 12)
                 }
+            }
             }
             .padding(.bottom, 12)
         }
@@ -1013,12 +1036,14 @@ struct DetailRow: View {
 ///
 struct ChecklistBlock: View {
 
-    let checklist: KanbanChecklist          /* The checklist data rendered by the block           */
-    let onDelete: () -> Void                /* The action invoked when the checklist is deleted   */
-    let onAddItem: () -> Void               /* The action invoked when a new item is added        */
-    let onToggleItem: (Int) -> Void         /* The action invoked when an item is toggled         */
-    let onUpdateItem: (Int, String) -> Void /* The action invoked when item text is edited        */
-    let onDeleteItem: (Int) -> Void         /* The action invoked when an item is deleted         */
+    let checklist: KanbanChecklist          /* The checklist data rendered by the block                                */
+    let onDelete: () -> Void                /* The action invoked when the checklist is deleted                        */
+    let onAddItem: () -> Void               /* The action invoked when a new item is added                             */
+    let onToggleItem: (Int) -> Void         /* The action invoked when an item is toggled                              */
+    let onUpdateItem: (Int, String) -> Void /* The action invoked when item text is edited                             */
+    let onDeleteItem: (Int) -> Void         /* The action invoked when an item is deleted                              */
+    let focusFirstItem: Bool                /* Whether the first item should be focused when the checklist is rendered */
+    let onFirstItemFocused: () -> Void      /* The action invoked when the first item receives focus                   */
 
 
     ///
@@ -1067,7 +1092,9 @@ struct ChecklistBlock: View {
 
                     onDelete: {
                         onDeleteItem(index)
-                    }
+                    },
+                    shouldFocus: focusFirstItem && index == 0,
+                    onFocusHandled: onFirstItemFocused
                 )
             }
 
@@ -1096,13 +1123,16 @@ struct ChecklistBlock: View {
 ///
 struct ChecklistItemRow: View {
 
-    let item: String                  /* The editable item text               */
-    let isCompleted: Bool             /* The current completion state         */
-    let onToggle: () -> Void          /* The action invoked by the checkbox   */
-    let onUpdate: (String) -> Void    /* The action invoked by text editing   */
-    let onDelete: () -> Void          /* The action invoked by delete         */
+    let item: String                  /* The editable item text                                        */
+    let isCompleted: Bool             /* The current completion state                                  */
+    let onToggle: () -> Void          /* The action invoked by the checkbox                            */
+    let onUpdate: (String) -> Void    /* The action invoked by text editing                            */
+    let onDelete: () -> Void          /* The action invoked by delete                                  */
+    let shouldFocus: Bool             /* Indicates whether the text field should receive focus         */
+    let onFocusHandled: () -> Void    /* The action invoked when the text field focus has been handled */
 
     @State private var horizontalOffset: CGFloat = 0
+    @FocusState private var isTextFocused: Bool
 
 
     var body: some View {
@@ -1135,6 +1165,14 @@ struct ChecklistItemRow: View {
                     set: onUpdate
                 ))
                 .font(.subheadline)
+                .focused($isTextFocused)
+                .onAppear {
+                    guard shouldFocus else { return }
+                    DispatchQueue.main.async {
+                        isTextFocused = true
+                        onFocusHandled()
+                    }
+                }
 
                 Spacer()
             }
