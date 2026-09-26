@@ -34,12 +34,12 @@ struct KanbanCard: Identifiable, Hashable {
     var descriptionOverride: String?        /* Optional user-edited description                   */
     var subtitleOverride: String?           /* Optional user-edited board subtitle                */
 
-    /// Indicates whether this item should render and behave as a section divider.
+    /// Indicates whether this item should render and behave as a section divider
     var isSectionDivider: Bool {
         isDivider || Self.isDividerTitle(word)
     }
 
-    /// Recognizes the ASCII marker and dash characters substituted by iOS smart punctuation.
+    /// Recognizes the ASCII marker and dash characters substituted by iOS smart punctuation
     static func isDividerTitle(_ title: String) -> Bool {
 
         let trimmedTitle   = title.trimmingCharacters(in: .whitespacesAndNewlines)
@@ -77,26 +77,27 @@ struct KanbanCard: Identifiable, Hashable {
     ///
     init(id: Int, word: String, listTitle: String, isDivider: Bool = false, isTitleChecked: Bool = false, startDate: Date? = nil, dueDate: Date? = nil, checklists: [KanbanChecklist]? = nil, comments: [KanbanComment] = [], dismissedActivityIDs: Set<String> = [], descriptionOverride: String? = nil, subtitleOverride: String? = nil) {
 
-        self.id             = id                /* Stable numeric identifier for the card             */
-        self.word           = word              /* Display word shown as the card's title             */
-        self.listTitle      = listTitle         /* Name of the list where the card resides            */
-        self.isDivider      = isDivider         /* Whether this item renders as a section divider     */
-        self.isTitleChecked = isTitleChecked    /* Whether the card's main title checkbox is selected */
-        self.startDate      = startDate         /* Optional start date for the card                   */
-        self.dueDate        = dueDate           /* Optional due date for the card                     */
-        self.checklists     = checklists ?? [
+        self.id                   = id                      /* Stable numeric identifier for the card             */
+        self.word                 = word                    /* Display word shown as the card's title             */
+        self.listTitle            = listTitle               /* Name of the list where the card resides            */
+        self.isDivider            = isDivider               /* Whether this item renders as a section divider     */
+        self.isTitleChecked       = isTitleChecked          /* Whether the card's main title checkbox is selected */
+        self.startDate            = startDate               /* Optional start date for the card                   */
+        self.dueDate              = dueDate                 /* Optional due date for the card                     */
+        self.comments             = comments                /* Array of comments associated with the card         */
+        self.dismissedActivityIDs = dismissedActivityIDs    /* Set of activity IDs that were dismissed by user    */
+        self.descriptionOverride  = descriptionOverride     /* Optional user-edited description                   */
+        self.subtitleOverride     = subtitleOverride        /* Optional user-edited subtitle                      */
+        self.checklists           = checklists ?? [
             KanbanChecklist(title: "Focus",   items: ["Gather the important bits",   "Make it look intentional", "Celebrate the surprisingly good result"], completed: id % 4),
             KanbanChecklist(title: "Plan",    items: ["Choose the next useful step", "Stop building",            "Start producing"],                        completed: 1),
             KanbanChecklist(title: "Routine", items: ["Home",                        "Gym",                      "Work"])
         ]
-        self.comments             = comments
-        self.dismissedActivityIDs = dismissedActivityIDs
-        self.descriptionOverride  = descriptionOverride
-        self.subtitleOverride     = subtitleOverride
     }
 
-    /// Human-readable label for the card's start date.
+    /// Human-readable label for the card's start date
     var startDateLabel: String {
+
         guard let startDate else {
             return "Today"
         }
@@ -104,8 +105,9 @@ struct KanbanCard: Identifiable, Hashable {
         return Self.dateFormatter.string(from: startDate)
     }
 
-    /// Human-readable label for the card's due date.
+    /// Human-readable label for the card's due date
     var dueDateLabel: String {
+
         guard let dueDate else {
             return "Tomorrow"
         }
@@ -113,9 +115,11 @@ struct KanbanCard: Identifiable, Hashable {
         return Self.dateFormatter.string(from: dueDate)
     }
 
-    /// Shared formatter used to render card date labels.
+    /// Shared formatter used to render card date labels
     private static let dateFormatter: DateFormatter = {
+
         let formatter       = DateFormatter()
+
         formatter.dateStyle = .medium
         formatter.timeStyle = .none
 
@@ -257,13 +261,13 @@ struct KanbanChecklist: Identifiable, Hashable {
 
 // -------------------------------------- MARK: - Card Comment ------------------------------- //
 
-/// A comment posted to a kanban card's activity feed.
+/// A comment posted to a kanban card's activity feed
 struct KanbanComment: Identifiable, Hashable {
 
-    let id: UUID
-    let author: String
-    let body: String
-    let createdAt: Date
+    let id:        UUID         /* Unique identifier for the comment                 */
+    let author:    String       /* Author of the comment                             */
+    let body:      String       /* Body text of the comment                          */
+    let createdAt: Date         /* Timestamp indicating when the comment was created */
 
     init(id: UUID = UUID(), author: String, body: String, createdAt: Date = .now) {
         self.id = id
@@ -280,7 +284,7 @@ struct KanbanComment: Identifiable, Hashable {
 /// Provides deterministic sample content used by the board and previews
 ///
 /// @section    Purpose
-///     Construct five lists with ten cards each without requiring persistence or a network service
+///     Construct five lists with ten cards each and representative divider rows without requiring persistence
 ///
 enum SampleData {
 
@@ -307,7 +311,7 @@ enum SampleData {
 
         var globalIndex = 0
 
-        return listTitles.enumerated().map { listIndex, title in
+        var initializedLists = listTitles.enumerated().map { listIndex, title in
 
             let cards = (0..<10).map { _ -> KanbanCard in
 
@@ -325,5 +329,37 @@ enum SampleData {
 
             return KanbanList(id: listIndex, title: title, cards: cards)
         }
+
+        // Positions at which divider rows should be inserted for each list
+        let dividerPositionsByList: [[Int]] = [
+            [3, 7],
+            [],
+            [5],
+            [],
+            [4]
+        ]
+
+        // Insert divider rows into the initialized lists at the specified positions
+        for listIndex in dividerPositionsByList.indices {
+
+            // Insert dividers for the current list
+            for (dividerOffset, cardPosition) in dividerPositionsByList[listIndex].enumerated() {
+
+                // Insert a divider card at the calculated position within the current list
+                initializedLists[listIndex].cards.insert(
+                    KanbanCard(
+                        id:        globalIndex,
+                        word:      "---",
+                        listTitle: initializedLists[listIndex].title,
+                        isDivider: true
+                    ),
+                    at: cardPosition + dividerOffset
+                )
+
+                globalIndex += 1
+            }
+        }
+
+        return initializedLists
     }()
 }

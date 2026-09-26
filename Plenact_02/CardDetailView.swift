@@ -357,6 +357,7 @@ struct CardDetailView: View {
         let checklist = KanbanChecklist(title: "Checklist", items: ["Item 1"])
 
         checklists.append(checklist)
+        
         checklistToFocus = checklist.id
 
         syncCardState()
@@ -378,7 +379,9 @@ struct CardDetailView: View {
     /// @post       The selected checklist is no longer rendered in the Checklists section
     ///
     private func deleteChecklist(with checklistID: UUID) {
+
         checklists.removeAll { $0.id == checklistID }
+
         syncCardState()
     }
 
@@ -396,15 +399,19 @@ struct CardDetailView: View {
     /// @post       The checklist displays the trimmed title; blank titles leave state unchanged
     ///
     private func renameChecklist(with checklistID: UUID, to title: String) {
+        
         guard let checklistIndex = checklists.firstIndex(where: { $0.id == checklistID }) else { return }
+        
         let trimmedTitle = title.trimmingCharacters(in: .whitespacesAndNewlines)
+        
         guard !trimmedTitle.isEmpty else { return }
 
         let checklist = checklists[checklistIndex]
+
         checklists[checklistIndex] = KanbanChecklist(
-            id: checklist.id,
-            title: trimmedTitle,
-            items: checklist.items,
+            id:                   checklist.id,
+            title:                trimmedTitle,
+            items:                checklist.items,
             completedItemIndices: checklist.completedItemIndices
         )
         syncCardState()
@@ -457,6 +464,7 @@ struct CardDetailView: View {
     ///
     private func moveChecklist(with checklistID: UUID, direction: ChecklistMoveDirection) {
 
+        // Ensure the checklist exists and there is more than one checklist to move
         guard let sourceIndex = checklists.firstIndex(where: { $0.id == checklistID }),
               checklists.count > 1 else {
             return
@@ -575,7 +583,7 @@ struct CardDetailView: View {
             return
         }
 
-        var items = checklist.items     /* Copy the current list of items for modification */
+        var items = checklist.items     /* Copy the current list of items for modification            */
         items[itemIndex] = text         /* Update the text of the specified item within the checklist */
 
         // Update the checklist with the modified items array
@@ -706,8 +714,17 @@ struct CardDetailView: View {
             Color(.systemGroupedBackground)
                 .ignoresSafeArea()
 
-            ScrollViewReader { scrollProxy in
-            ScrollView {
+            if card.isSectionDivider {
+                VStack(alignment: .leading) {
+                    Text("---")
+                        .font(.title2.weight(.bold))
+                    Spacer(minLength: 0)
+                }
+                .frame(maxWidth: .infinity, maxHeight: .infinity, alignment: .topLeading)
+                .padding(16)
+            } else {
+                ScrollViewReader { scrollProxy in
+                ScrollView {
 
                 VStack(alignment: .leading, spacing: 0) {
 
@@ -993,9 +1010,10 @@ struct CardDetailView: View {
                     .padding(.horizontal, 16)
                     .padding(.vertical, 12)
                 }
-            }
+                }
             }
             .padding(.bottom, 12)
+            }
         }
         .safeAreaInset(edge: .bottom) {
             Button {
@@ -1013,7 +1031,7 @@ struct CardDetailView: View {
             .padding(.vertical, 8)
             .background(.ultraThinMaterial)
         }
-        .navigationTitle(card.word.capitalized)
+        .navigationTitle(card.isSectionDivider ? "---" : card.word.capitalized)
         .navigationBarTitleDisplayMode(.inline)
         .navigationBarBackButtonHidden(true)
         .sheet(item: $activeDatePicker) { field in
@@ -1061,7 +1079,7 @@ struct DetailSection<Content: View>: View {
 
     let title:          String          /* The title of the detail section                    */
     var trailing:       String?         /* The optional trailing symbol of the detail section */
-    var trailingAction: (() -> Void)?   /* The optional action for the trailing symbol       */
+    var trailingAction: (() -> Void)?   /* The optional action for the trailing symbol        */
 
     @ViewBuilder let content: () -> Content
 
@@ -1253,6 +1271,7 @@ struct ChecklistBlock: View {
     /// @post       No checklist state is modified
     ///
     private var allItemsAreCompleted: Bool {
+
         /// Check if all items in the checklist are completed
         !checklist.items.isEmpty && checklist.completedItemIndices.count == checklist.items.count
     }
@@ -1268,6 +1287,7 @@ struct ChecklistBlock: View {
     /// @post       Checklist data and completion state remain unchanged
     ///
     private var visibleItems: [(offset: Int, element: String)] {
+
         /// Filter the checklist items based on the hideCompletedItems flag
         checklist.items.enumerated().filter { item in
             !hideCompletedItems || !checklist.completedItemIndices.contains(item.offset)

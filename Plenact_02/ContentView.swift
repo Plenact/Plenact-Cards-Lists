@@ -53,6 +53,7 @@ struct ContentView: View {
         lists.append(KanbanList(id: nextListID, title: newTitle, cards: []))
     }
 
+
     ///
     /// @fcn        ContentView.safeFrameDimension(_:subtracting:)
     /// @brief      Return a finite positive frame dimension after applying an inset
@@ -111,6 +112,7 @@ struct ContentView: View {
         lists[listIndex] = updatedList
     }
 
+
     ///
     /// @fcn        ContentView.deleteCard(in:cardID:)
     /// @brief      Remove one card from a board list
@@ -130,6 +132,7 @@ struct ContentView: View {
 
         lists[listIndex].cards.removeAll { $0.id == cardID }
     }
+
 
     ///
     /// @fcn        ContentView.moveCard(in:cardID:toIndex:)
@@ -158,8 +161,10 @@ struct ContentView: View {
         guard sourceIndex != safeDestinationIndex else { return }
 
         let movedCard = cards.remove(at: sourceIndex)
+
         cards.insert(movedCard, at: safeDestinationIndex)
 
+        // Update the list with the reordered cards, animating the change for a smooth user experience
         withAnimation(.easeInOut(duration: 0.2)) {
             lists[listIndex].cards = cards
         }
@@ -179,6 +184,7 @@ struct ContentView: View {
     /// @post       The board contains a distinct copy with unique list and card identifiers
     ///
     private func copyList(with listID: Int) {
+
         guard let sourceIndex = lists.firstIndex(where: { $0.id == listID }) else { return }
 
         let source       = lists[sourceIndex]
@@ -261,12 +267,16 @@ struct ContentView: View {
         var sortedCards:    [KanbanCard] = []
         var currentSection: [KanbanCard] = []
 
+        // Iterate through each card in the list, grouping them by sections and sorting within each section
         for card in updatedList.cards {
+
             guard card.isSectionDivider else {
                 currentSection.append(card)
                 continue
             }
 
+            // When encountering a section divider, sort the current section and append it to the sorted 
+            // cards before adding the divider itself
             sortedCards.append(contentsOf: currentSection.sorted {
                 let comparison = $0.word.localizedStandardCompare($1.word)
                 return ascending ? comparison == .orderedAscending : comparison == .orderedDescending
@@ -477,7 +487,9 @@ struct BoardHeader: View {
 
     /// Builds the title block and board action controls.
     var body: some View {
+
         HStack {
+
             VStack(alignment: .leading, spacing: 2) {
 
                 Text("Plenact")
@@ -542,7 +554,9 @@ private struct BoardSettingsView: View {
     var body: some View {
 
         NavigationStack {
+
             Form {
+
                 Section("Card badges") {
                     Toggle("Checklist progress", isOn: $settings.showChecklistProgress)
                     Toggle("Comment counts",     isOn: $settings.showCommentCounts)
@@ -575,6 +589,7 @@ private struct BoardSettingsView: View {
 ///
 struct KanbanListView: View {
 
+    // description of the active sheet types used in the Kanban list view
     private enum ActiveSheet: String, Identifiable {
         case listActions
         case newCard
@@ -631,10 +646,12 @@ struct KanbanListView: View {
                 Spacer()
 
                 Button {
+
                     withAnimation(.easeInOut(duration: 0.2)) {
                         editMode = editMode == .active ? .inactive : .active
                     }
                 } label: {
+
                     Image(systemName: editMode == .active ? "checkmark.circle.fill" : "arrow.up.arrow.down.circle")
                         .foregroundStyle(.secondary)
                         .frame(width: 32, height: 32)
@@ -671,20 +688,30 @@ struct KanbanListView: View {
             .padding(.bottom, 10)
 
             List {
+
                 ForEach(list.cards) { card in
+
                     if card.isSectionDivider {
-                        Rectangle()
-                            .fill(Color.secondary.opacity(0.45))
-                            .frame(height: 2)
-                            .padding(.horizontal, 12)
-                            .padding(.vertical, 12)
-                            .frame(maxWidth: .infinity)
-                            .accessibilityLabel("Section divider")
+
+                        NavigationLink(value: card) {
+
+                            Rectangle()
+                                .fill(Color.secondary.opacity(0.45))
+                                .frame(height: 2)
+                                .padding(.horizontal, 12)
+                                .padding(.vertical, 12)
+                                .frame(maxWidth: .infinity)
+                                .contentShape(Rectangle())
+                        }
+                        .buttonStyle(.plain)
+                        .accessibilityLabel("Open section divider")
                             .listRowInsets(EdgeInsets(top: 4, leading: 4, bottom: 4, trailing: 4))
                             .listRowSeparator(.hidden)
                             .listRowBackground(Color.clear)
                     } else {
+
                         NavigationLink(value: card) {
+
                             KanbanCardView(
                                 card: card,
                                 height: cardHeight,
@@ -709,12 +736,14 @@ struct KanbanListView: View {
                     }
                 }
                 .onMove { sourceOffsets, destinationOffset in
+
                     guard let sourceIndex = sourceOffsets.first,
                           list.cards.indices.contains(sourceIndex) else {
                         return
                     }
 
                     let finalIndex = sourceIndex < destinationOffset ? destinationOffset - 1 : destinationOffset
+
                     onMoveCard(list.cards[sourceIndex].id, finalIndex)
                 }
 
@@ -765,13 +794,23 @@ struct KanbanListView: View {
 }
 
 
+///
+/// Presents a form for creating a card in the selected kanban list
+///
+/// @section    Purpose
+///     Collect a card title and optional description, then return the trimmed values to the owning list view
+///
+/// @details    The title field also accepts the divider marker, allowing the list to create a movable section divider
+///
+/// @note       Dismissing with Cancel does not invoke the creation callback
+///
 private struct NewKanbanCardSheet: View {
 
     let listTitle: String
     let onCreate: (String, String) -> Void
 
     @Environment(\.dismiss) private var dismiss
-    @State private var title = ""
+    @State private var title       = ""
     @State private var description = ""
 
     private var trimmedTitle: String {
@@ -779,8 +818,11 @@ private struct NewKanbanCardSheet: View {
     }
 
     var body: some View {
+
         NavigationStack {
+
             Form {
+
                 Section("Card details") {
                     TextField("Title (or --- for divider)", text: $title)
                     TextField("Description", text: $description, axis: .vertical)
@@ -871,8 +913,11 @@ private struct KanbanListActionsSheet: View {
     var body: some View {
         
         NavigationStack {
+
             List {
+
                 Section {
+
                     Button {
                         onAddCard()
                         dismiss()
@@ -995,10 +1040,10 @@ struct KanbanCardView: View {
     let onDeleteCard: () -> Void                    /* The action invoked when this card is deleted                  */
     let onToggle: () -> Void                        /* Callback invoked when the card's title checkbox is toggled    */
 
-    @State private var renameDraft        = ""                  /* Draft text for the rename operation                        */
-    @State private var isRenaming         = false               /* Flag indicating if the rename operation is active          */
-    @State private var isEditingInfo      = false               /* Flag indicating if the card info editing mode is active    */
-    @State private var isConfirmingDelete = false               /* Flag indicating if the delete confirmation dialog is shown */
+    @State private var renameDraft        = ""      /* Draft text for the rename operation                           */
+    @State private var isRenaming         = false   /* Flag indicating if the rename operation is active             */
+    @State private var isEditingInfo      = false   /* Flag indicating if the card info editing mode is active       */
+    @State private var isConfirmingDelete = false   /* Flag indicating if the delete confirmation dialog is shown    */
 
 
     private var trimmedRenameDraft: String {
@@ -1059,7 +1104,7 @@ struct KanbanCardView: View {
         ))
     }
 
-    /// Builds a fixed-height card summary within its parent list.
+    /// Builds a fixed-height card summary within its parent list
     var body: some View {
 
         VStack(alignment: .leading, spacing: 9) {
@@ -1209,9 +1254,10 @@ private struct CardInfoEditorSheet: View {
     /// @post       All editable fields begin with the selected card's current display values
     ///
     init(card: KanbanCard, onSave: @escaping (String, String, String) -> Void) {
-        self.onSave = onSave
-        _title = State(initialValue: card.word.capitalized)
-        _subtitle = State(initialValue: card.subtitle)
+
+        self.onSave  = onSave
+        _title       = State(initialValue: card.word.capitalized)
+        _subtitle    = State(initialValue: card.subtitle)
         _description = State(initialValue: card.funParagraph)
     }
     
@@ -1227,7 +1273,9 @@ private struct CardInfoEditorSheet: View {
     /// @post       Save invokes onSave with the edited values; Cancel dismisses without applying them
     ///
     var body: some View {
+
         NavigationStack {
+
             Form {
                 Section("Card details") {
                     TextField("Title", text: $title)
