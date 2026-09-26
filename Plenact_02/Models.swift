@@ -21,9 +21,36 @@ import Foundation
 ///
 struct KanbanCard: Identifiable, Hashable {
 
-    let id:        Int
-    let word:      String
-    let listTitle: String
+    let id:             Int         /* Stable numeric identifier for the card             */
+    let word:           String      /* Display word shown as the card's title             */
+    let listTitle:      String      /* Name of the list where the card resides            */
+    var isTitleChecked: Bool        /* Whether the card's main title checkbox is selected */
+
+
+    ///
+    /// @fcn        KanbanCard.init
+    /// @brief      Initialize a kanban card with its core identity and state
+    /// @details    Creates a board card with a stable identifier, displayed word, list membership,
+    ///             and the per-card title checkbox state used in the detail view
+    ///
+    /// @param[in]  id                Stable numeric identifier for the card
+    /// @param[in]  word              Display word shown as the card's title
+    /// @param[in]  listTitle         Name of the list where the card resides
+    /// @param[in]  isTitleChecked    Whether the card's main title checkbox is selected
+    ///
+    /// @return     (KanbanCard) configured card instance
+    ///
+    /// @pre        All values should be valid for the board's deterministic sample data
+    /// @post       The card contains the provided identity, title text, and checked state
+    ///
+    init(id: Int, word: String, listTitle: String, isTitleChecked: Bool = false) {
+
+        self.id             = id                /* Stable numeric identifier for the card             */
+        self.word           = word              /* Display word shown as the card's title             */
+        self.listTitle      = listTitle         /* Name of the list where the card resides            */
+        self.isTitleChecked = isTitleChecked    /* Whether the card's main title checkbox is selected */
+    }
+
 
     /// Short supporting copy shown beneath the card title
     var subtitle: String {
@@ -52,7 +79,9 @@ struct KanbanCard: Identifiable, Hashable {
 
     /// Humorous context paragraph shown in the card detail view
     var funParagraph: String {
+
         let templates: [(String, String) -> String] = [
+
             { word, title in
                 "Deep within the \(title) list, a \(word) staged a one-creature protest, demanding better lighting and a snack table. Management is 'reviewing the request', which is corporate for 'ignoring it politely'."
             },
@@ -102,9 +131,9 @@ struct KanbanCard: Identifiable, Hashable {
 ///
 struct KanbanList: Identifiable {
 
-    let id:        Int
-    let title:     String
-    let cards:     [KanbanCard]
+    let id:        Int              /* Unique identifier for the kanban list */
+    let title:     String           /* Title of the kanban list              */
+    var cards:     [KanbanCard]     /* Cards contained within the list       */
 
 
     /// Supporting copy shown beneath the list title.
@@ -182,7 +211,13 @@ enum SampleData {
         return listTitles.enumerated().map { listIndex, title in
 
             let cards = (0..<10).map { _ -> KanbanCard in
-                let card = KanbanCard(id: globalIndex, word: words[globalIndex % words.count], listTitle: title)
+
+                let card = KanbanCard(
+                                      id:             globalIndex,
+                                      word:           words[globalIndex % words.count],
+                                      listTitle:      title,
+                                      isTitleChecked: globalIndex % 3 == 0
+                                     )
 
                 globalIndex += 1
 

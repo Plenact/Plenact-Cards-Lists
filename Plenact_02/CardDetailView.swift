@@ -21,11 +21,13 @@ import SwiftUI
 ///
 struct CardDetailView: View {
 
-    let card: KanbanCard   /* The kanban card being displayed in detail */
+    let card: KanbanCard                                    /* The kanban card being displayed in detail                */
+    let onTitleToggle: ((KanbanCard) -> Void)?              /* Callback invoked when the card title checkbox is toggled */
 
 
     @Environment(\.dismiss) private var dismiss             /* Dismiss action for the card detail view                */
     @State private var checklists: [KanbanChecklist]        /* The checklist groups associated with the selected card */
+    @State private var titleChecked: Bool                   /* Whether the card title itself is checked               */
 
     ///
     /// @brief      Initialize the card detail state
@@ -35,9 +37,14 @@ struct CardDetailView: View {
     ///
     /// @return     (CardDetailView) configured card detail presentation
     ///
-    init(card: KanbanCard) {
-        self.card = card
-        _checklists = State(initialValue: [
+    init(card: KanbanCard, onTitleToggle: ((KanbanCard) -> Void)? = nil) {
+
+        self.card          = card                                   /* The kanban card being displayed in detail                            */
+        self.onTitleToggle = onTitleToggle                          /* Callback invoked when the card title checkbox is toggled             */
+        
+        _titleChecked = State(initialValue: card.isTitleChecked)    /* Initialize the title checked state based on the card's current value */
+        
+        _checklists = State(initialValue: [                         /* Initialize the checklist groups based on the card's current state    */
             KanbanChecklist(title: "Focus",   items: card.checklistItems,            completed: card.completedChecklistItems),
             KanbanChecklist(title: "Plan",    items: ["Choose the next useful step", "Stop building", "Start producing"], completed: 1),
             KanbanChecklist(title: "Routine", items: ["Home",                        "Gym",           "Work"])
@@ -232,11 +239,27 @@ struct CardDetailView: View {
                 .ignoresSafeArea()
 
             ScrollView {
+
                 VStack(alignment: .leading, spacing: 0) {
-                    HStack(alignment: .top, spacing: 12) {
-                        Image(systemName: "circle")
-                            .font(.title2)
-                            .foregroundStyle(.secondary)
+
+                    HStack(alignment: .center, spacing: 12) {
+                        
+                        Button {
+                            let nextChecked = !titleChecked
+                            titleChecked = nextChecked
+                            onTitleToggle?(KanbanCard(
+                                id: card.id,
+                                word: card.word,
+                                listTitle: card.listTitle,
+                                isTitleChecked: nextChecked
+                            ))
+                        } label: {
+                            Image(systemName: titleChecked ? "checkmark.square.fill" : "square")
+                                .font(.title2)
+                                .foregroundStyle(titleChecked ? .blue : .secondary)
+                        }
+                        .buttonStyle(.plain)
+                        .accessibilityLabel(titleChecked ? "Uncheck card title" : "Check card title")
 
                         VStack(alignment: .leading, spacing: 5) {
                             Text(card.word.capitalized)
