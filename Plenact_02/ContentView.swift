@@ -753,6 +753,7 @@ struct KanbanListView: View {
                                 .contentShape(Rectangle())
                         }
                         .buttonStyle(.plain)
+                        .modifier(HideNavigationLinkIndicator())
                         .accessibilityLabel("Open section divider")
                             .listRowInsets(EdgeInsets(top: 4, leading: 4, bottom: 4, trailing: 4))
                             .listRowSeparator(.hidden)
@@ -772,6 +773,7 @@ struct KanbanListView: View {
                             }
                         }
                         .buttonStyle(.plain)
+                        .modifier(HideNavigationLinkIndicator())
                         .listRowInsets(EdgeInsets(top: 4, leading: 4, bottom: 4, trailing: 4))
                         .listRowSeparator(.hidden)
                         .listRowBackground(Color.clear)
@@ -823,21 +825,59 @@ struct KanbanListView: View {
             switch presentedSheet {
             case .listActions:
                 KanbanListActionsSheet(
-                    list: list,
-                    canMoveEarlier: canMoveEarlier,
-                    canMoveLater: canMoveLater,
-                    isWatching: $isWatching,
-                    listTint: $listTint,
-                    onAddCard: { activeSheet = .newCard },
-                    onCopyList: onCopyList,
-                    onMoveList: onMoveList,
-                    onSortList: onSortList,
+                    list:               list,
+                    canMoveEarlier:     canMoveEarlier,
+                    canMoveLater:       canMoveLater,
+                    isWatching:         $isWatching,
+                    listTint:           $listTint,
+                    onAddCard:          { activeSheet = .newCard },
+                    onCopyList:         onCopyList,
+                    onMoveList:         onMoveList,
+                    onSortList:         onSortList,
                     onArchiveCompleted: onArchiveCompleted,
-                    onArchiveList: onArchiveList
+                    onArchiveList:      onArchiveList
                 )
             case .newCard:
                 NewKanbanCardSheet(listTitle: list.title, onCreate: onAddCard)
             }
+        }
+    }
+}
+
+
+///
+/// Hides the automatic trailing indicator on navigation links when supported
+///
+/// @section    Purpose
+///     Keep list rows fully tappable without displaying a redundant disclosure chevron
+///
+/// @details    Uses SwiftUI's navigation indicator visibility API on iOS 18 and later, while preserving content on earlier versions
+///
+/// @note       Apply this modifier to navigation links whose destination is indicated by the row itself
+///
+private struct HideNavigationLinkIndicator: ViewModifier {
+
+    @ViewBuilder
+    ///
+    /// @fcn        HideNavigationLinkIndicator.body(content:)
+    /// @brief      Configure navigation indicator visibility for the modified content
+    /// @details    Hides navigation link indicators on iOS 18 and later; earlier iOS versions receive the content unchanged
+    ///
+    /// @param[in]  content  View content to which this modifier is applied
+    ///
+    /// @return     (some View) modified content with the navigation indicator hidden when supported
+    ///
+    /// @pre        SwiftUI invokes this function when the modifier is applied to a view
+    /// @post       The original content is preserved, with supported navigation indicators hidden
+    ///
+    func body(content: Content) -> some View {
+
+        if #available(iOS 18.0, *) {
+
+            content.navigationLinkIndicatorVisibility(.hidden)
+            
+        } else {
+            content
         }
     }
 }
@@ -855,12 +895,12 @@ struct KanbanListView: View {
 ///
 private struct NewKanbanCardSheet: View {
 
-    let listTitle: String
-    let onCreate: (String, String) -> Void
+    let listTitle: String                               /* Title of the kanban list to which the new card will be added                             */
+    let onCreate: (String, String) -> Void              /* Callback invoked with the trimmed title and description when the user creates a new card */
 
-    @Environment(\.dismiss) private var dismiss
-    @State private var title       = ""
-    @State private var description = ""
+    @Environment(\.dismiss) private var dismiss         /* Environment variable to dismiss the current view */
+    @State private var title       = ""                 /* User-entered card title                          */
+    @State private var description = ""                 /* User-entered card description                    */
 
     private var trimmedTitle: String {
         title.trimmingCharacters(in: .whitespacesAndNewlines)
