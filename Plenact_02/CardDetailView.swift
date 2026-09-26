@@ -400,6 +400,23 @@ struct CardDetailView: View {
     }
 
 
+    /// Builds the shared destination-list menu used by the card actions and list label.
+    @ViewBuilder
+    private func moveCardMenu<Label: View>(@ViewBuilder label: () -> Label) -> some View {
+        Menu {
+            ForEach(availableLists) { list in
+                Button(list.title) {
+                    onMoveToList?(list.id)
+                    dismiss()
+                }
+            }
+        } label: {
+            label()
+        }
+        .disabled(availableLists.isEmpty)
+    }
+
+
     ///
     /// @fcn        CardDetailView.dateRow(for:)
     /// @brief      Build one start-date or due-date row
@@ -866,12 +883,16 @@ struct CardDetailView: View {
                                         syncCardState(title: newValue)
                                     }
 
-                                Text("\(card.listTitle)")
-                                    .font(.caption)
-                                    .foregroundStyle(.secondary)
-                                    .italic()
-                                    .lineLimit(1)
-                                    .truncationMode(.tail)
+                                moveCardMenu {
+                                    Text(card.listTitle)
+                                        .font(.caption)
+                                        .foregroundStyle(.secondary)
+                                        .italic()
+                                        .lineLimit(1)
+                                        .truncationMode(.tail)
+                                }
+                                .buttonStyle(.plain)
+                                .accessibilityLabel("Move card from \(card.listTitle)")
                                 }
 
                             TextField("Card subtitle", text: $subtitleText)
@@ -1147,17 +1168,9 @@ struct CardDetailView: View {
                         } label: {
                             Label("Edit description", systemImage: "text.alignleft")
                         }
-                        Menu {
-                            ForEach(availableLists) { list in
-                                Button(list.title) {
-                                    onMoveToList?(list.id)
-                                    dismiss()
-                                }
-                            }
-                        } label: {
+                        moveCardMenu {
                             Label("Move card", systemImage: "arrowshape.turn.up.right")
                         }
-                        .disabled(availableLists.isEmpty)
                         Button {
                             activityFilter = .all
                         } label: {
