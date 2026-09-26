@@ -31,6 +31,7 @@ struct KanbanCard: Identifiable, Hashable {
     var comments:       [KanbanComment]     /* Comments posted to the card's activity             */
     var dismissedActivityIDs: Set<String>   /* Generated activity entries removed by the user     */
     var descriptionOverride: String?        /* Optional user-edited description                   */
+    var subtitleOverride: String?           /* Optional user-edited board subtitle                */
 
 
     ///
@@ -52,7 +53,7 @@ struct KanbanCard: Identifiable, Hashable {
     /// @pre        All values should be valid for the board's deterministic sample data
     /// @post       The card contains the provided identity, title text, and checked state
     ///
-    init(id: Int, word: String, listTitle: String, isTitleChecked: Bool = false, startDate: Date? = nil, dueDate: Date? = nil, checklists: [KanbanChecklist]? = nil, comments: [KanbanComment] = [], dismissedActivityIDs: Set<String> = [], descriptionOverride: String? = nil) {
+    init(id: Int, word: String, listTitle: String, isTitleChecked: Bool = false, startDate: Date? = nil, dueDate: Date? = nil, checklists: [KanbanChecklist]? = nil, comments: [KanbanComment] = [], dismissedActivityIDs: Set<String> = [], descriptionOverride: String? = nil, subtitleOverride: String? = nil) {
 
         self.id             = id                /* Stable numeric identifier for the card             */
         self.word           = word              /* Display word shown as the card's title             */
@@ -68,6 +69,7 @@ struct KanbanCard: Identifiable, Hashable {
         self.comments             = comments
         self.dismissedActivityIDs = dismissedActivityIDs
         self.descriptionOverride  = descriptionOverride
+        self.subtitleOverride     = subtitleOverride
     }
 
     /// Human-readable label for the card's start date.
@@ -99,7 +101,11 @@ struct KanbanCard: Identifiable, Hashable {
 
     /// Short supporting copy shown beneath the card title
     var subtitle: String {
-        ["A small idea with suspiciously large ambitions", "Make progress before the coffee gets cold", "A practical plan, lightly seasoned with chaos", "One more useful thing for today's board", "Future success, pending a snack break"][id % 5]
+        if let subtitleOverride {
+            return subtitleOverride
+        }
+
+        return ["A small idea with suspiciously large ambitions", "Make progress before the coffee gets cold", "A practical plan, lightly seasoned with chaos", "One more useful thing for today's board", "Future success, pending a snack break"][id % 5]
     }
 
     /// Checklist labels used by the card detail presentation

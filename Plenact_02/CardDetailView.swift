@@ -178,7 +178,8 @@ struct CardDetailView: View {
             checklists:           checklists,
             comments:             comments,
             dismissedActivityIDs: dismissedActivityIDs,
-            descriptionOverride:  descriptionText
+            descriptionOverride:  descriptionText,
+            subtitleOverride:     card.subtitleOverride
         )
 
         onTitleToggle?(updatedCard)

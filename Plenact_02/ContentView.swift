@@ -150,7 +150,9 @@ struct ContentView: View {
         var cards = lists[listIndex].cards
 
         guard let sourceIndex = cards.firstIndex(where: { $0.id == cardID }), !cards.isEmpty else { return }
+
         let safeDestinationIndex = min(max(destinationIndex, 0), cards.count - 1)
+
         guard sourceIndex != safeDestinationIndex else { return }
 
         let movedCard = cards.remove(at: sourceIndex)
@@ -194,7 +196,8 @@ struct ContentView: View {
                 checklists:           card.checklists,
                 comments:             card.comments,
                 dismissedActivityIDs: card.dismissedActivityIDs,
-                descriptionOverride:  card.descriptionOverride
+                descriptionOverride:  card.descriptionOverride,
+                subtitleOverride:     card.subtitleOverride
             )
 
             nextCardID += 1
@@ -405,6 +408,7 @@ struct ContentView: View {
                                         onArchiveCompleted: { archiveCompletedCards(in: list.id) },
                                         onArchiveList: { archiveList(with: list.id) },
                                         onDeleteCard: { cardID in deleteCard(in: list.id, cardID: cardID) },
+                                        onUpdateCard: updateCard,
                                         onMoveCard: { cardID, destinationIndex in
                                             moveCard(in: list.id, cardID: cardID, toIndex: destinationIndex)
                                         }
@@ -569,6 +573,7 @@ struct KanbanListView: View {
     let onArchiveCompleted: () -> Void          /* The action invoked to archive all completed cards in the list  */
     let onArchiveList: () -> Void               /* The action invoked to archive the entire list                  */
     let onDeleteCard: (Int) -> Void             /* The action invoked to delete a card at a specified index       */
+    let onUpdateCard: (KanbanCard) -> Void      /* The action invoked to save edited card information             */
     let onMoveCard: (Int, Int) -> Void          /* Move a card to a destination index in this list                */
 
     @State private var activeSheet: ActiveSheet?            /* The currently active sheet presented modally        */
@@ -646,7 +651,13 @@ struct KanbanListView: View {
             List {
                 ForEach(list.cards) { card in
                     NavigationLink(value: card) {
-                        KanbanCardView(card: card, height: cardHeight, displaySettings: displaySettings) {
+                        KanbanCardView(
+                            card: card,
+                            height: cardHeight,
+                            displaySettings: displaySettings,
+                            onUpdateCard: onUpdateCard,
+                            onDeleteCard: { onDeleteCard(card.id) }
+                        ) {
                             toggleCardTitle(card.id)
                         }
                     }
@@ -934,7 +945,72 @@ struct KanbanCardView: View {
     let card: KanbanCard                            /* The kanban card being displayed                               */
     let height: CGFloat                             /* The fixed height of the card view                             */
     let displaySettings: BoardDisplaySettings       /* Settings controlling which elements of the card are displayed */
+    let onUpdateCard: (KanbanCard) -> Void          /* The action invoked when card details are updated              */
+    let onDeleteCard: () -> Void                    /* The action invoked when this card is deleted                  */
     let onToggle: () -> Void                        /* Callback invoked when the card's title checkbox is toggled    */
+
+    @State private var renameDraft = ""
+    @State private var isRenaming = false
+    @State private var isEditingInfo = false
+    @State private var isConfirmingDelete = false
+
+
+    private var trimmedRenameDraft: String {
+        renameDraft.trimmingCharacters(in: .whitespacesAndNewlines)
+    }
+
+
+    ///
+    /// @fcn        KanbanCardView.cardUpdated(title:subtitle:description:)
+    /// @brief      Create a card snapshot containing edited display information
+    /// @details    Replaces the title, subtitle, and description while preserving the card's identity and other state
+    ///
+    /// @param[in]  title        Updated card title
+    /// @param[in]  subtitle     Optional board subtitle override
+    /// @param[in]  description  Updated detail description
+    ///
+    /// @return     (KanbanCard) updated card retaining its dates, checklist, comments, completion, and activity state
+    ///
+    /// @pre        Values come from the current card edit operation
+    /// @post       The original card remains unchanged; the returned snapshot contains the requested display values
+    ///
+    private func cardUpdated(title: String, subtitle: String?, description: String?) -> KanbanCard {
+        KanbanCard(
+            id:                   card.id,
+            word:                 title,
+            listTitle:            card.listTitle,
+            isTitleChecked:       card.isTitleChecked,
+            startDate:            card.startDate,
+            dueDate:              card.dueDate,
+            checklists:           card.checklists,
+            comments:             card.comments,
+            dismissedActivityIDs: card.dismissedActivityIDs,
+            descriptionOverride:  description,
+            subtitleOverride:     subtitle
+        )
+    }
+
+
+    ///
+    /// @fcn        KanbanCardView.renameCard
+    /// @brief      Submit the renamed card title
+    /// @details    Trims the title draft, ignores an empty result, and sends the updated card to the board callback
+    ///
+    /// @return     (Void) requests a card update when the trimmed title is not empty
+    ///
+    /// @pre        renameDraft contains the title entered in the Rename Card alert
+    /// @post       A valid title is synchronized to board state; an empty title causes no change
+    ///
+    private func renameCard() {
+        
+        guard !trimmedRenameDraft.isEmpty else { return }
+
+        onUpdateCard(cardUpdated(
+            title:       trimmedRenameDraft,
+            subtitle:    card.subtitleOverride,
+            description: card.descriptionOverride
+        ))
+    }
 
     /// Builds a fixed-height card summary within its parent list.
     var body: some View {
@@ -958,6 +1034,34 @@ struct KanbanCardView: View {
                     .foregroundStyle(.primary)
 
                 Spacer(minLength: 4)
+
+                Menu {
+                    Button(role: .destructive) {
+                        isConfirmingDelete = true
+                    } label: {
+                        Label("Delete Card", systemImage: "trash")
+                    }
+
+                    Button {
+                        renameDraft = card.word.capitalized
+                        isRenaming = true
+                    } label: {
+                        Label("Rename Card", systemImage: "pencil")
+                    }
+
+                    Button {
+                        isEditingInfo = true
+                    } label: {
+                        Label("Update Card Info", systemImage: "slider.horizontal.3")
+                    }
+                } label: {
+                    Image(systemName: "ellipsis")
+                        .foregroundStyle(.secondary)
+                        .frame(width: 28, height: 28)
+                        .contentShape(Rectangle())
+                }
+                .buttonStyle(.plain)
+                .accessibilityLabel("Card actions")
             }
 
             Text(card.subtitle)
@@ -991,6 +1095,114 @@ struct KanbanCardView: View {
         .clipShape(RoundedRectangle(cornerRadius: 12, style: .continuous))
         .shadow(color: .black.opacity(0.10), radius: 3, y: 2)
         .padding(.horizontal, 4)
+        .alert("Rename Card", isPresented: $isRenaming) {
+            TextField("Card title", text: $renameDraft)
+            Button("Cancel", role: .cancel) {}
+            Button("Rename", action: renameCard)
+                .disabled(trimmedRenameDraft.isEmpty)
+        } message: {
+            Text("Enter a new title for this card.")
+        }
+        .confirmationDialog("Delete \(card.word.capitalized)?", isPresented: $isConfirmingDelete, titleVisibility: .visible) {
+            Button("Delete Card", role: .destructive, action: onDeleteCard)
+            Button("Cancel", role: .cancel) {}
+        }
+        .sheet(isPresented: $isEditingInfo) {
+            CardInfoEditorSheet(card: card) { title, subtitle, description in
+                onUpdateCard(cardUpdated(title: title, subtitle: subtitle, description: description))
+            }
+        }
+    }
+}
+
+
+private struct CardInfoEditorSheet: View {
+
+    let onSave: (String, String, String) -> Void
+
+    @Environment(\.dismiss) private var dismiss
+    @State private var title:       String
+    @State private var subtitle:    String
+    @State private var description: String
+
+    ///
+    /// @fcn        CardInfoEditorSheet.trimmedTitle
+    /// @brief      Return the title draft without surrounding whitespace
+    /// @details    Trims leading and trailing whitespace and newline characters before validation or saving
+    ///
+    /// @return     (String) normalized title draft; may be empty when the input contains only whitespace
+    ///
+    /// @pre        title contains the current text-field value
+    /// @post       The stored title draft is unchanged
+    ///
+    private var trimmedTitle: String {
+        title.trimmingCharacters(in: .whitespacesAndNewlines)
+    }
+
+
+    ///
+    /// @fcn        CardInfoEditorSheet.init(card:onSave:)
+    /// @brief      Initialize the card information editor
+    /// @details    Seeds the title, subtitle, and description fields from the selected card and stores its save callback
+    ///
+    /// @param[in]  card    Card whose information will be edited
+    /// @param[in]  onSave  Callback that applies the edited title, subtitle, and description
+    ///
+    /// @return     (CardInfoEditorSheet) configured card information form
+    ///
+    /// @pre        card contains the current values to present in the form
+    /// @post       All editable fields begin with the selected card's current display values
+    ///
+    init(card: KanbanCard, onSave: @escaping (String, String, String) -> Void) {
+        self.onSave = onSave
+        _title = State(initialValue: card.word.capitalized)
+        _subtitle = State(initialValue: card.subtitle)
+        _description = State(initialValue: card.funParagraph)
+    }
+    
+
+    ///
+    /// @fcn        CardInfoEditorSheet.body
+    /// @brief      Build the card information editing form
+    /// @details    Presents title, subtitle, and description fields with Cancel and validated Save actions
+    ///
+    /// @return     (some View) modal form for updating card display information
+    ///
+    /// @pre        Editor state has been initialized from the selected card
+    /// @post       Save invokes onSave with the edited values; Cancel dismisses without applying them
+    ///
+    var body: some View {
+        NavigationStack {
+            Form {
+                Section("Card details") {
+                    TextField("Title", text: $title)
+                    TextField("Subtitle", text: $subtitle)
+                }
+
+                Section("Description") {
+                    TextField("Description", text: $description, axis: .vertical)
+                        .lineLimit(4...12)
+                }
+            }
+            .navigationTitle("Update Card Info")
+            .navigationBarTitleDisplayMode(.inline)
+            .toolbar {
+                ToolbarItem(placement: .cancellationAction) {
+                    Button("Cancel") {
+                        dismiss()
+                    }
+                }
+                ToolbarItem(placement: .confirmationAction) {
+                    Button("Save") {
+                        onSave(trimmedTitle, subtitle, description)
+                        dismiss()
+                    }
+                    .disabled(trimmedTitle.isEmpty)
+                }
+            }
+        }
+        .presentationDetents([.medium, .large])
+        .presentationDragIndicator(.visible)
     }
 }
 
