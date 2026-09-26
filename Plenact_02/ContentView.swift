@@ -258,6 +258,8 @@ struct ContentView: View {
         guard let listIndex = lists.firstIndex(where: { $0.id == listID }) else { return }
 
         lists[listIndex].cards.removeAll { $0.id == cardID }
+
+        pruneUnreferencedAttachments()
     }
 
 
@@ -333,6 +335,7 @@ struct ContentView: View {
                 comments:             card.comments,
                 members:              card.members,
                 labelIDs:             card.labelIDs,
+                attachments:          card.attachments,
                 dismissedActivityIDs: card.dismissedActivityIDs,
                 descriptionOverride:  card.descriptionOverride,
                 subtitleOverride:     card.subtitleOverride
@@ -444,6 +447,8 @@ struct ContentView: View {
         guard let listIndex = lists.firstIndex(where: { $0.id == listID }) else { return }
 
         lists[listIndex].cards.removeAll { !$0.isSectionDivider && $0.isTitleChecked }
+
+        pruneUnreferencedAttachments()
     }
 
 
@@ -461,6 +466,8 @@ struct ContentView: View {
     ///
     private func archiveList(with listID: Int) {
         lists.removeAll { $0.id == listID }
+
+        pruneUnreferencedAttachments()
     }
 
 
@@ -521,8 +528,36 @@ struct ContentView: View {
             updatedList.cards[cardIndex] = updatedCard
             lists[listIndex]             = updatedList
 
+            pruneUnreferencedAttachments()
+
             return
         }
+    }
+
+
+    ///
+    /// @fcn        ContentView.pruneUnreferencedAttachments
+    /// @brief      Remove stored photo files that are no longer assigned to any card
+    /// @details    Collects attachment filenames referenced by the current board and asks the attachment store
+    ///             to remove files outside that set
+    ///
+    /// @return     (Void) cleans unreferenced image files from the app's attachment directory
+    ///
+    /// @pre        lists reflects the current board state after a card or list mutation
+    /// @post       Files referenced by cards remain available; unreferenced files are removed when possible
+    ///
+    /// @note       File-system cleanup failures are ignored by CardAttachmentStore
+    ///
+    private func pruneUnreferencedAttachments() {
+        
+        let referencedFileNames = Set(
+            lists
+                .flatMap(\.cards)
+                .flatMap { $0.attachments ?? [] }
+                .map(\.fileName)
+        )
+
+        CardAttachmentStore.removeUnreferencedFiles(keeping: referencedFileNames)
     }
 
 
@@ -1489,6 +1524,7 @@ struct KanbanCardView: View {
             comments:             card.comments,
             members:              card.members,
             labelIDs:             card.labelIDs,
+            attachments:          card.attachments,
             dismissedActivityIDs: card.dismissedActivityIDs,
             descriptionOverride:  description,
             subtitleOverride:     subtitle

@@ -10,6 +10,7 @@
 		290B0BC3566E4CC6AE0360F1 /* Models.swift in Sources */ = {isa = PBXBuildFile; fileRef = 88D254D2B426422D8D5F0495 /* Models.swift */; };
 		B1A8C54E2D7F4A31A9600001 /* LabelModels.swift in Sources */ = {isa = PBXBuildFile; fileRef = B1A8C54E2D7F4A31A9600003 /* LabelModels.swift */; };
 		B1A8C54E2D7F4A31A9600002 /* CardLabelsSheet.swift in Sources */ = {isa = PBXBuildFile; fileRef = B1A8C54E2D7F4A31A9600004 /* CardLabelsSheet.swift */; };
+		A21C9B4E7F714DC68A4E0001 /* PhotoAttachments.swift in Sources */ = {isa = PBXBuildFile; fileRef = A21C9B4E7F714DC68A4E0002 /* PhotoAttachments.swift */; };
 		354B6C37BBEC4A4F98B58F97 /* Assets.xcassets in Resources */ = {isa = PBXBuildFile; fileRef = FC15405D865C4534ACD974D9 /* Assets.xcassets */; };
 		D45892BF9775403B92A500E8 /* CardDetailView.swift in Sources */ = {isa = PBXBuildFile; fileRef = EEEDCC72BE49419DA31600DF /* CardDetailView.swift */; };
 		E4A013ED39924784A8B35FF7 /* Plenact_02App.swift in Sources */ = {isa = PBXBuildFile; fileRef = 89F4E20A08E44BCB9281DCC4 /* Plenact_02App.swift */; };
@@ -25,6 +26,7 @@
 		FC15405D865C4534ACD974D9 /* Assets.xcassets */ = {isa = PBXFileReference; lastKnownFileType = folder.assetcatalog; path = Assets.xcassets; sourceTree = "<group>"; };
 		B1A8C54E2D7F4A31A9600003 /* LabelModels.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = LabelModels.swift; sourceTree = "<group>"; };
 		B1A8C54E2D7F4A31A9600004 /* CardLabelsSheet.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = CardLabelsSheet.swift; sourceTree = "<group>"; };
+		A21C9B4E7F714DC68A4E0002 /* PhotoAttachments.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = PhotoAttachments.swift; sourceTree = "<group>"; };
 /* End PBXFileReference section */
 
 /* Begin PBXFrameworksBuildPhase section */
@@ -55,6 +57,7 @@
 			isa = PBXGroup;
 			children = (
 				B1A8C54E2D7F4A31A9600006 /* Labels */,
+				A21C9B4E7F714DC68A4E0003 /* Attachments */,
 			);
 			path = Features;
 			sourceTree = "<group>";
@@ -66,6 +69,14 @@
 				B1A8C54E2D7F4A31A9600004 /* CardLabelsSheet.swift */,
 			);
 			path = Labels;
+			sourceTree = "<group>";
+		};
+		A21C9B4E7F714DC68A4E0003 /* Attachments */ = {
+			isa = PBXGroup;
+			children = (
+				A21C9B4E7F714DC68A4E0002 /* PhotoAttachments.swift */,
+			);
+			path = Attachments;
 			sourceTree = "<group>";
 		};
 		C9B3B43E64FD4401B21E2988 = {
@@ -159,6 +170,7 @@
 				290B0BC3566E4CC6AE0360F1 /* Models.swift in Sources */,
 				B1A8C54E2D7F4A31A9600001 /* LabelModels.swift in Sources */,
 				B1A8C54E2D7F4A31A9600002 /* CardLabelsSheet.swift in Sources */,
+				A21C9B4E7F714DC68A4E0001 /* PhotoAttachments.swift in Sources */,
 			);
 			runOnlyForDeploymentPostprocessing = 0;
 		};

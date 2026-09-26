@@ -10,6 +10,8 @@
 //
 // --------------------------------------------------------------------------------------------------
 import SwiftUI
+import PhotosUI
+import UIKit
 
 
 /// Identifies a checklist's requested position within its card.
@@ -68,16 +70,18 @@ struct CardDetailView: View {
     ///
     private enum ActiveSheet: Identifiable {
 
-        case date(DateField)        /* Date picker sheet for editing a specific date field */
-        case members                /* Card member management sheet                        */
-        case labels                 /* Card label library and assignment picker            */
+        case date(DateField)                        /* Date picker sheet for editing a specific date field */
+        case members                                /* Card member management sheet                        */
+        case labels                                 /* Card label library and assignment picker            */
+        case attachmentPreview(KanbanAttachment)    /* Preview of an attached photo                        */
 
-        var id: String {            /* Stable identity for the active sheet                */
+        var id: String {                            /* Stable identity for the active sheet                */
 
             switch self {
-                case .date(let field): "date-\(field.id)"
-                case .members:         "members"
-                case .labels:          "labels"
+                case .date(let field):                   "date-\(field.id)"
+                case .members:                           "members"
+                case .labels:                            "labels"
+                case .attachmentPreview(let attachment): "attachment-\(attachment.id.uuidString)"
             }
         }
     }
@@ -173,10 +177,13 @@ struct CardDetailView: View {
     @State private var comments: [KanbanComment]             /* Comments saved to this card's activity                       */
     @State private var members: [String]                     /* Users assigned to the selected card                          */
     @State private var selectedLabelIDs: [String]            /* Stable IDs of labels assigned to this card                   */
+    @State private var attachments: [KanbanAttachment]       /* Photo attachments currently assigned to the card             */
+    @State private var selectedPhotoItems: [PhotosPickerItem] = [] /* Photos selected from the system photo library          */
     @State private var commentDraft = ""                     /* Text currently entered in the comment composer               */
     @State private var dismissedActivityIDs: Set<String>     /* IDs of activity entries that have been dismissed by the user */
     @State private var activityFilter: ActivityFilter = .all /* The currently selected activity filter for the card          */
-    @State private var showingAttachmentNotice = false       /* Whether the attachment availability notice is presented      */
+    @State private var showingPhotoImportError = false       /* Whether a photo import error is presented                    */
+    @State private var photoImportErrorMessage = ""          /* Explanation shown when a selected photo cannot be imported   */
 
     ///
     /// @brief      Initialize the card detail state
@@ -213,6 +220,7 @@ struct CardDetailView: View {
         _comments             = State(initialValue: card.comments)              /* Initialize comments from the selected card                           */
         _members              = State(initialValue: card.members)               /* Initialize assigned members from the selected card                   */
         _selectedLabelIDs     = State(initialValue: card.labelIDs)              /* Initialize selected labels from the card                             */
+        _attachments          = State(initialValue: card.attachments ?? [])     /* Initialize photo attachments from the card                           */
         _dismissedActivityIDs = State(initialValue: card.dismissedActivityIDs)  /* Initialize dismissed activity IDs from the card state                */
 
         _checklists = State(initialValue: card.checklists)                      /* Initialize checklist state from the card's stored values             */
@@ -230,6 +238,68 @@ struct CardDetailView: View {
         selectedLabelIDs.compactMap { labelID in
             labelLibrary.labels.first(where: { $0.id == labelID })
         }
+    }
+
+
+    @MainActor
+    ///
+    /// @fcn        CardDetailView.importPhotos(from:)
+    /// @brief      Import selected photo-library items as card attachments
+    /// @details    Loads each selected image, stores successful transfers in the app container,
+    ///             synchronizes the attachment metadata to the card, and reports partial failures
+    ///
+    /// @param[in]  photoItems  PhotosPicker items selected for the current card
+    ///
+    /// @return     (Void) updates the card with successfully imported photo attachments
+    ///
+    /// @pre        photoItems were selected from the PhotosPicker for this card
+    /// @post       The selection is cleared; saved attachment records are synchronized to board state
+    ///
+    /// @note       Successful imports are retained even if another selected item fails to load or save
+    ///
+    private func importPhotos(from photoItems: [PhotosPickerItem]) async {
+
+        var importFailed = false
+
+        for photoItem in photoItems {
+            do {
+                guard let imageData = try await photoItem.loadTransferable(type: Data.self) else {
+                    importFailed = true
+                    continue
+                }
+
+                attachments.append(try CardAttachmentStore.saveImage(imageData))
+            } catch {
+                importFailed = true
+            }
+        }
+
+        selectedPhotoItems = []
+
+        syncCardState(attachments: attachments)
+
+        if importFailed {
+            photoImportErrorMessage = "One or more selected photos could not be added. Please try again."
+            showingPhotoImportError = true
+        }
+    }
+
+    ///
+    /// @fcn        CardDetailView.removeAttachment(_:)
+    /// @brief      Remove one photo from the current card
+    /// @details    Deletes the attachment record from local detail state and synchronizes the updated card;
+    ///             the board owner removes the stored image file if no card references it
+    ///
+    /// @param[in]  attachment  Photo attachment selected for removal
+    ///
+    /// @return     (Void) updates the card's attachment collection and persistence state
+    ///
+    /// @pre        attachment identifies an item in the current card's attachment collection
+    /// @post       The selected photo is no longer assigned to this card
+    ///
+    private func removeAttachment(_ attachment: KanbanAttachment) {
+        attachments.removeAll { $0.id == attachment.id }
+        syncCardState(attachments: attachments)
     }
 
 
@@ -251,6 +321,7 @@ struct CardDetailView: View {
         subtitle:       String?   = nil,
         members:        [String]? = nil,
         labelIDs:       [String]? = nil,
+        attachments:    [KanbanAttachment]? = nil,
         titleChecked:   Bool?     = nil,
         startDate:      Date?     = nil,
         dueDate:        Date?     = nil,
@@ -263,6 +334,7 @@ struct CardDetailView: View {
         let nextSubtitle      = subtitle      ?? (card.subtitleOverride == nil && subtitleText == card.subtitle ? nil : subtitleText)
         let nextMembers       = members       ?? self.members
         let nextLabelIDs      = labelIDs      ?? selectedLabelIDs
+        let nextAttachments   = attachments   ?? self.attachments
         let nextStartDate     = clearStartDate ? nil : (startDate ?? self.startDate)
         let nextDueDate       = clearDueDate   ? nil : (dueDate   ?? self.dueDate)
 
@@ -278,6 +350,7 @@ struct CardDetailView: View {
             comments:             comments,
             members:              nextMembers,
             labelIDs:             nextLabelIDs,
+            attachments:          nextAttachments,
             dismissedActivityIDs: dismissedActivityIDs,
             descriptionOverride:  descriptionText,
             subtitleOverride:     nextSubtitle
@@ -949,8 +1022,31 @@ struct CardDetailView: View {
                         LazyVGrid(columns: [GridItem(.flexible()), GridItem(.flexible())], spacing: 8) {
 
                             ActionTile(title: "Add Checklist",  icon: "checklist", color: .green,  action: { addChecklist(using: scrollProxy) })
-                            ActionTile(title: "Add Attachment", icon: "paperclip", color: .cyan,   action: { showingAttachmentNotice = true })
+                            CardPhotoPickerTile(selection: $selectedPhotoItems)
                             ActionTile(title: "Members",        icon: "person.2",  color: .purple, action: { activeSheet = .members })
+                        }
+                    }
+
+                    if !attachments.isEmpty {
+                        DetailSection(title: "Attachments") {
+                            LazyVGrid(columns: [GridItem(.adaptive(minimum: 92), spacing: 8)], spacing: 8) {
+                                ForEach(attachments) { attachment in
+                                    Button {
+                                        activeSheet = .attachmentPreview(attachment)
+                                    } label: {
+                                        CardAttachmentThumbnail(attachment: attachment)
+                                    }
+                                    .buttonStyle(.plain)
+                                    .contextMenu {
+                                        Button(role: .destructive) {
+                                            removeAttachment(attachment)
+                                        } label: {
+                                            Label("Remove photo", systemImage: "trash")
+                                        }
+                                    }
+                                    .accessibilityLabel("View attached photo")
+                                }
+                            }
                         }
                     }
 
@@ -1234,10 +1330,16 @@ struct CardDetailView: View {
         .navigationTitle("")
         .navigationBarTitleDisplayMode(.inline)
         .navigationBarBackButtonHidden(true)
-        .alert("Attachments coming soon", isPresented: $showingAttachmentNotice) {
-            Button("Ok", role: .cancel) {}
+        .onChange(of: selectedPhotoItems) { _, photoItems in
+            guard !photoItems.isEmpty else { return }
+            Task {
+                await importPhotos(from: photoItems)
+            }
+        }
+        .alert("Couldn't add photo", isPresented: $showingPhotoImportError) {
+            Button("OK", role: .cancel) {}
         } message: {
-            Text("Adding attachments to cards isn't ready yet, but it's on the way")
+            Text(photoImportErrorMessage)
         }
         .sheet(item: $activeSheet) { sheet in
             switch sheet {
@@ -1283,6 +1385,8 @@ struct CardDetailView: View {
                         syncCardState(labelIDs: updatedLabelIDs)
                     }
                     .presentationDetents([.large])
+                case .attachmentPreview(let attachment):
+                    CardAttachmentPreview(attachment: attachment)
             }
         }
         }
