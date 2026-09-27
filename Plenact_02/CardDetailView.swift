@@ -1805,6 +1805,7 @@ struct ChecklistBlock: View {
     @State private var isRenaming = false   /* Whether the checklist title is currently being renamed                  */
     @State private var titleDraft = ""      /* The draft text for the checklist title being edited                     */
     @State private var hideCompletedItems = false
+    @State private var isCollapsed = false  /* Whether the checklist's items are currently collapsed from view         */
 
     ///
     /// @fcn        ChecklistBlock.allItemsAreCompleted
@@ -1867,6 +1868,20 @@ struct ChecklistBlock: View {
                     .font(.caption)
                     .foregroundStyle(.secondary)
 
+                Button {
+                    withAnimation(.easeInOut(duration: 0.2)) {
+                        isCollapsed.toggle()
+                    }
+                } label: {
+                    Image(systemName: isCollapsed ? "chevron.down" : "chevron.up")
+                        .font(.caption.weight(.semibold))
+                        .foregroundStyle(.secondary)
+                        .frame(width: 24, height: 24)
+                        .contentShape(Rectangle())
+                }
+                .buttonStyle(.plain)
+                .accessibilityLabel(isCollapsed ? "Expand checklist" : "Collapse checklist")
+
                 Menu {
                     Toggle("Hide Completed", isOn: $hideCompletedItems)
 
@@ -1920,37 +1935,40 @@ struct ChecklistBlock: View {
             }
             .padding(.bottom, 6)
 
-            ForEach(visibleItems, id: \.offset) { entry in
+            if !isCollapsed {
 
-                ChecklistItemRow(
-                    item: entry.element,
-                    isCompleted: checklist.completedItemIndices.contains(entry.offset),
+                ForEach(visibleItems, id: \.offset) { entry in
 
-                    onToggle: {
-                        onToggleItem(entry.offset)
-                    },
+                    ChecklistItemRow(
+                        item: entry.element,
+                        isCompleted: checklist.completedItemIndices.contains(entry.offset),
 
-                    onUpdate: { text in
-                        onUpdateItem(entry.offset, text)
-                    },
+                        onToggle: {
+                            onToggleItem(entry.offset)
+                        },
 
-                    onDelete: {
-                        onDeleteItem(entry.offset)
-                    },
-                    shouldFocus: focusFirstItem && entry.offset == 0,
-                    onFocusHandled: onFirstItemFocused
-                )
+                        onUpdate: { text in
+                            onUpdateItem(entry.offset, text)
+                        },
+
+                        onDelete: {
+                            onDeleteItem(entry.offset)
+                        },
+                        shouldFocus: focusFirstItem && entry.offset == 0,
+                        onFocusHandled: onFirstItemFocused
+                    )
+                }
+
+                Button(action: onAddItem) {
+
+                    Text("Add item...")
+                        .font(.subheadline)
+                        .foregroundStyle(.secondary)
+                        .frame(maxWidth: .infinity, alignment: .leading)
+                        .padding(.vertical, 6)
+                }
+                .buttonStyle(.plain)
             }
-
-            Button(action: onAddItem) {
-
-                Text("Add item...")
-                    .font(.subheadline)
-                    .foregroundStyle(.secondary)
-                    .frame(maxWidth: .infinity, alignment: .leading)
-                    .padding(.vertical, 6)
-            }
-            .buttonStyle(.plain)
         }
         .padding(.vertical, 6)
         .alert("Rename Checklist", isPresented: $isRenaming) {
