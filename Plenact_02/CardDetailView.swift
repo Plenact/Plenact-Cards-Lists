@@ -1115,8 +1115,26 @@ struct CardDetailView: View {
                             .fixedSize(horizontal: false, vertical: true)
                             .lineLimit(3...12)
                             .focused($focusedField, equals: .description)
+                            .onTapGesture {
+                                focusedField = .description
+                            }
                             .onChange(of: descriptionText) {
                                 syncCardState()
+                            }
+                            .toolbar {
+                                ToolbarItemGroup(placement: .keyboard) {
+                                    if focusedField == .description {
+                                        Spacer()
+                                        Button {
+                                            focusedField = nil
+                                        } label: {
+                                            Image(systemName: "chevron.down")
+                                                .font(.system(size: 16, weight: .semibold))
+                                                .frame(width: 30, height: 30)
+                                        }
+                                        .foregroundStyle(.blue)
+                                    }
+                                }
                             }
                     }
 
@@ -1140,19 +1158,26 @@ struct CardDetailView: View {
                         Button {
                             activeSheet = .labels
                         } label: {
+
                             HStack(spacing: 10) {
+
                                 Image(systemName: "tag")
                                     .frame(width: 22)
                                     .foregroundStyle(.secondary)
 
                                 Text("Labels")
+
                                 Spacer()
 
                                 if selectedLabels.isEmpty {
+
                                     Text("Add labels")
                                         .foregroundStyle(.secondary)
+
                                 } else {
+
                                     ForEach(selectedLabels) { label in
+
                                         KanbanLabelChip(label: label)
                                     }
                                 }
@@ -1168,13 +1193,17 @@ struct CardDetailView: View {
 
                         Button {
                             activeSheet = .members
+
                         } label: {
+
                             HStack(spacing: 12) {
+
                                 if members.isEmpty {
 
                                     Image(systemName: "person")
                                         .frame(width: 22)
                                         .foregroundStyle(.secondary)
+
                                 } else {
 
                                     HStack(spacing: -5) {
@@ -1189,7 +1218,9 @@ struct CardDetailView: View {
                                 }
 
                                 Text("Members")
+
                                 Spacer()
+
                                 Text(members.isEmpty ? "Add members" : members.joined(separator: ", "))
                                     .foregroundStyle(.secondary)
                                     .lineLimit(1)
@@ -1270,6 +1301,7 @@ struct CardDetailView: View {
                     .overlay(alignment: .bottom) { Divider() }
 
                     HStack(alignment: .bottom, spacing: 10) {
+
                         Image(systemName: "person.crop.circle.fill")
                             .font(.title2)
                             .foregroundStyle(memberIconColor(for: currentUserName))
@@ -1297,9 +1329,12 @@ struct CardDetailView: View {
             }
         }
         .safeAreaInset(edge: .top, spacing: 0) {
+
             HStack(spacing: 12) {
+
                 Button {
                     dismiss()
+
                 } label: {
                     Image(systemName: "xmark")
                         .font(.system(size: 16, weight: .semibold))
@@ -1314,6 +1349,7 @@ struct CardDetailView: View {
                 Spacer()
 
                 if !card.isSectionDivider {
+
                     Menu {
                         Button {
                             addChecklist(using: scrollProxy)
@@ -1478,12 +1514,15 @@ private struct CardMembersSheet: View {
 
     // Returns the member draft with leading and trailing whitespace removed
     private var trimmedMemberDraft: String {
+
         memberDraft.trimmingCharacters(in: .whitespacesAndNewlines)
     }
 
     // Determines whether the current member draft can be added to the list of members
     private var canAddMember: Bool {
+
         !trimmedMemberDraft.isEmpty && !members.contains {
+            
             $0.localizedCaseInsensitiveCompare(trimmedMemberDraft) == .orderedSame
         }
     }
@@ -1496,7 +1535,7 @@ private struct CardMembersSheet: View {
         let membersToSave = canAddMember ? members + [trimmedMemberDraft] : members
 
         return membersToSave.compactMap { member in
-            let trimmedMember = member.trimmingCharacters(in: .whitespacesAndNewlines)
+            let trimmedMember  = member.trimmingCharacters(in: .whitespacesAndNewlines)
             let normalizedName = trimmedMember.lowercased()
 
             guard !trimmedMember.isEmpty, seenNames.insert(normalizedName).inserted else {
